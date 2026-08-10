@@ -71,44 +71,6 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--out-dir", default="output", help="输出目录（默认 output/，自动创建）")
     return p
 
-
-# def _make_demo_image(path: str, size: int = 80) -> None:
-#     """生成一张带渐变+图案的示例图，用于演示/测试。"""
-#     import math
-
-#     from PIL import Image, ImageDraw
-
-#     img = Image.new("RGB", (size, size))
-#     px = img.load()
-#     cx = cy = size / 2
-#     for y in range(size):
-#         for x in range(size):
-#             dx, dy = x - cx, y - cy
-#             r = math.hypot(dx, dy)
-#             # 背景从青色渐变到紫色
-#             t = (x + y) / (2 * size)
-#             r_ = int(40 + 120 * t)
-#             g_ = int(180 - 90 * t)
-#             b_ = int(200 - 60 * t)
-#             # 画一个“太阳”
-#             if r < size * 0.22:
-#                 r_, g_, b_ = 255, 210, 60
-#             elif r < size * 0.24:
-#                 r_, g_, b_ = 255, 255, 255
-#             px[x, y] = (r_, g_, b_)
-#     # 加几个彩色圆点
-#     d = ImageDraw.Draw(img)
-#     for (px_, py_, col) in [
-#         (int(size * 0.28), int(size * 0.30), (230, 60, 80)),
-#         (int(size * 0.72), int(size * 0.28), (70, 160, 90)),
-#         (int(size * 0.30), int(size * 0.72), (90, 110, 230)),
-#         (int(size * 0.72), int(size * 0.72), (180, 90, 200)),
-#     ]:
-#         d.ellipse([px_ - 12, py_ - 12, px_ + 12, py_ + 12], fill=col)
-#     img.save(path)
-#     print(f"已生成示例图: {path}")
-
-
 def _pick_file() -> str:
     import tkinter as tk
     from tkinter import filedialog
