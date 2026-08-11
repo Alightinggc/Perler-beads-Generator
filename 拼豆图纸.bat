@@ -22,12 +22,12 @@ echo ========================================
 echo  拼豆图纸转换器 - 正在处理: %~nx1
 echo ========================================
 echo.
-python main.py "%~1" --palette %PALETTE% --label-style %LABEL% --max-colors %MAXCOLORS% --cell %CELL% %EXTRA%
+python main.py "%~1" --palette %PALETTE% --label-style %LABEL% --max-colors %MAXCOLORS% --cell %CELL% --out-dir "output\%~n1" %EXTRA%
 shift
 goto loop
 
 :done
 echo.
-echo 全部完成！结果已保存到 output 文件夹。
+echo 全部完成！结果已保存到 output 下对应的文件名子文件夹。
 echo 按任意键关闭...
 pause >nul
