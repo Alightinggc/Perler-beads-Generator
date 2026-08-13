@@ -42,9 +42,6 @@ def build_parser() -> argparse.ArgumentParser:
                    help="色差度量：ciede2000 更准，cie76 更快")
     g.add_argument("--max-colors", type=int, default=0,
                    help="最多用几种豆色（0=不限）。会贪心挑选最能代表本图的色号，自动合并相似颜色")
-    g.add_argument("--bg-hex", default="", help="把该颜色当作背景（空格不填豆），如 #FFFFFF")
-    g.add_argument("--bg-tol", type=float, default=6.0, help="背景色匹配容差（CIEDE2000）")
-    g.add_argument("--auto-bg", action="store_true", help="自动把图片四周主色识别为背景")
     g.add_argument("--no-dither", dest="dither", action="store_false", default=True,
                    help="关闭Floyd-Steinberg抖动（默认开启，能更好还原渐变/过渡色）")
 
@@ -175,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         PatternOptions,
         assign_codes,
         build_pattern,
-        load_rgba,
+        load_rgb,
     )
     from bead_pattern.exporter import (
         save_grid_csv,
@@ -190,16 +187,13 @@ def main(argv: list[str] | None = None) -> int:
         height=args.height,
         metric=args.metric,
         max_colors=args.max_colors,
-        bg_hex=args.bg_hex,
-        bg_tolerance=args.bg_tol,
-        auto_bg=args.auto_bg,
         dither=args.dither,
     )
 
     print(f"读取图片: {args.input}")
-    rgb, alpha = load_rgba(args.input)
+    rgb = load_rgb(args.input)
     print(f"原图尺寸: {rgb.shape[1]} x {rgb.shape[0]}  使用色板: {palette.name}（{len(palette.colors)}色）")
-    pattern = build_pattern(rgb, alpha, palette, opts)
+    pattern = build_pattern(rgb, palette, opts)
     codes = assign_codes(pattern.used_indices, args.label_style, palette)
 
     print()

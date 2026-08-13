@@ -1,7 +1,7 @@
 """图片 -> 拼豆网格的核心转换逻辑。
 
 流程：
-1. 读图（RGBA），把透明像素视为“空格”
+1. 读图（RGB）
 2. 保持原图尺寸（每个像素 = 1 颗豆），仅在超过上限时等比缩小
 3. 每个像素在 Lab 色彩空间映射到最接近的标准豆色
 4. 可选：用贪心算法在色板中挑选“最能代表本图”的 N 种豆色，
@@ -26,10 +26,6 @@ class PatternOptions:
     height: int = 0            # 固定高度（格），0=不指定
     metric: str = "ciede2000"  # ciede2000 | cie76
     max_colors: int = 0        # 0 = 不限（用满色板）
-    bg_hex: str = ""           # 指定背景色（该色 -> 空格）
-    bg_tolerance: float = 6.0  # 背景色匹配容差（CIEDE2000）
-    auto_bg: bool = False      # 自动识别背景（取四周主色）
-    auto_bg_ratio: float = 0.6  # 自动背景要求四周该色占比下限
     dither: bool = True        # Floyd-Steinberg 抖动（默认开启，能更好还原渐变/过渡色）
 
 
@@ -37,7 +33,7 @@ class PatternOptions:
 class Pattern:
     width: int
     height: int
-    grid: list[list[int]]          # 每格：色板下标，或 -1 表示空格
+    grid: list[list[int]]          # 每格：色板下标
     palette: Palette
     used_indices: list[int] = field(default_factory=list)  # 用到的色板下标
     counts: dict[int, int] = field(default_factory=dict)   # 下标 -> 豆数
@@ -78,12 +74,11 @@ def fit_grid_size(img_w: int, img_h: int, opts: PatternOptions) -> tuple[int, in
 # ---------------------------------------------------------------------------
 # 读取与降采样
 # ---------------------------------------------------------------------------
-def load_rgba(path: str) -> tuple[np.ndarray, np.ndarray]:
-    """返回 (rgb (H,W,3) uint8, alpha (H,W) uint8)。"""
+def load_rgb(path: str) -> np.ndarray:
+    """返回 rgb (H,W,3) uint8。"""
     with Image.open(path) as im:
-        im = im.convert("RGBA")
-        arr = np.asarray(im, dtype=np.uint8)
-    return arr[..., :3], arr[..., 3]
+        im = im.convert("RGB")
+        return np.asarray(im, dtype=np.uint8)
 
 
 def downsample(rgb: np.ndarray, gw: int, gh: int) -> np.ndarray:
@@ -129,45 +124,6 @@ def assign_codes(
 
 
 # ---------------------------------------------------------------------------
-# 背景 / 空格处理
-# ---------------------------------------------------------------------------
-def _detect_background(rgb: np.ndarray, opts: PatternOptions) -> tuple[int, int, int] | None:
-    """返回背景 RGB 或 None。优先 --bg-hex，其次 --auto-bg。"""
-    if opts.bg_hex:
-        h = opts.bg_hex.lstrip("#")
-        try:
-            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
-        except ValueError:
-            raise ValueError(f"无法解析背景色 '{opts.bg_hex}'，应为 #RRGGBB")
-    if opts.auto_bg:
-        h, w = rgb.shape[:2]
-        border = np.concatenate(
-            [
-                rgb[:1].reshape(-1, 3), rgb[-1:].reshape(-1, 3),
-                rgb[:, :1].reshape(-1, 3), rgb[:, -1:].reshape(-1, 3),
-            ]
-        )
-        from collections import Counter
-
-        counter = Counter(map(tuple, border.tolist()))
-        top_color, top_n = counter.most_common(1)[0]
-        if top_n / len(border) >= opts.auto_bg_ratio:
-            return top_color
-    return None
-
-
-def _bg_mask(rgb: np.ndarray, bg: tuple[int, int, int], opts: PatternOptions) -> np.ndarray:
-    """返回布尔矩阵：True 表示该格属于背景（空格）。"""
-    from .color import ciede2000_matrix, srgb_to_lab
-
-    flat = rgb.reshape(-1, 3)
-    d = ciede2000_matrix(srgb_to_lab(flat), srgb_to_lab(np.array([bg], dtype=np.float64)))
-    return (d[:, 0] <= opts.bg_tolerance).reshape(rgb.shape[:2])
-
-
-
-
-# ---------------------------------------------------------------------------
 # 颜色映射 + 自动减色
 # ---------------------------------------------------------------------------
 def map_to_palette(rgb: np.ndarray, palette: Palette, metric: str) -> np.ndarray:
@@ -177,35 +133,32 @@ def map_to_palette(rgb: np.ndarray, palette: Palette, metric: str) -> np.ndarray
     return d.argmin(axis=1).reshape(rgb.shape[:2])
 
 
-def _dither_assign(rgb: np.ndarray, empty: np.ndarray, used: list[int], palette: Palette) -> np.ndarray:
+def _dither_assign(rgb: np.ndarray, used: list[int], palette: Palette) -> np.ndarray:
     """Floyd-Steinberg 抖动映射：在 used 色号子集内逐像素量化并把误差扩散到相邻像素。
 
-    返回 (H,W) int 数组（色板下标；空格处为 -1，外层仍用 empty 判断）。
+    返回 (H,W) int 数组（色板下标）。
     误差在 RGB 空间按 7/16、3/16、5/16、1/16 比例扩散到右、左下、下、右下。
     """
     h, w = rgb.shape[:2]
     used_arr = np.array(used, dtype=np.int64)
     used_rgb = palette.rgb_array()[used_arr]  # (K,3)
     work = rgb.astype(np.float64).copy()
-    assign = np.full((h, w), -1, dtype=np.int64)
+    assign = np.full((h, w), 0, dtype=np.int64)
     for y in range(h):
         for x in range(w):
-            if empty[y, x]:
-                continue
             old = work[y, x]
             d = ((used_rgb - old) ** 2).sum(axis=1)
             k = int(d.argmin())
             idx = int(used_arr[k])
             assign[y, x] = idx
             err = old - used_rgb[k]
-            if x + 1 < w and not empty[y, x + 1]:
+            if x + 1 < w:
                 work[y, x + 1] += err * (7 / 16)
             if y + 1 < h:
-                if x > 0 and not empty[y + 1, x - 1]:
+                if x > 0:
                     work[y + 1, x - 1] += err * (3 / 16)
-                if not empty[y + 1, x]:
-                    work[y + 1, x] += err * (5 / 16)
-                if x + 1 < w and not empty[y + 1, x + 1]:
+                work[y + 1, x] += err * (5 / 16)
+                if x + 1 < w:
                     work[y + 1, x + 1] += err * (1 / 16)
     return assign
 
@@ -240,7 +193,7 @@ def select_optimal_colors(
     return chosen
 
 
-def build_pattern(rgb: np.ndarray, alpha: np.ndarray, palette: Palette, opts: PatternOptions) -> Pattern:
+def build_pattern(rgb: np.ndarray, palette: Palette, opts: PatternOptions) -> Pattern:
     """核心入口：rgb (H,W,3) 原图 -> Pattern 网格。
 
     默认保持原图尺寸（每像素 = 1 颗豆），仅在以下情况缩放：
@@ -254,26 +207,16 @@ def build_pattern(rgb: np.ndarray, alpha: np.ndarray, palette: Palette, opts: Pa
         # 用户指定了固定宽/高 → 强制缩放
         gw, gh = fit_grid_size(img_w, img_h, opts)
         small_rgb = downsample(rgb, gw, gh)
-        small_alpha = downsample(alpha, gw, gh)
     elif opts.size > 0 and max(img_w, img_h) > opts.size:
         # 图片超过上限 → 等比缩小
         gw, gh = fit_grid_size(img_w, img_h, opts)
         small_rgb = downsample(rgb, gw, gh)
-        small_alpha = downsample(alpha, gw, gh)
     else:
         # 保持原图尺寸
         gw, gh = img_w, img_h
         small_rgb = rgb
-        small_alpha = alpha
-
-    # 空格掩码：透明 或 用户指定的背景过滤色（--bg-hex + --bg-tol，类似 PS 取色去背）
-    empty = small_alpha < 128
-    bg = _detect_background(small_rgb, opts)
-    if bg is not None:
-        empty |= _bg_mask(small_rgb, bg, opts)
 
     flat = small_rgb.reshape(-1, 3).astype(np.float64)
-    empty_flat = empty.reshape(-1)
 
     # 选出用到的色号子集
     if opts.max_colors and opts.max_colors < len(palette.colors):
@@ -281,11 +224,11 @@ def build_pattern(rgb: np.ndarray, alpha: np.ndarray, palette: Palette, opts: Pa
     else:
         d = distance_matrix(flat, palette.rgb_array(), opts.metric)
         assignment = d.argmin(axis=1)
-        used = sorted(set(assignment[~empty_flat].tolist()))
+        used = sorted(set(assignment.tolist()))
 
     # 在子集内映射（可选 Floyd-Steinberg 抖动；默认开启能更好还原渐变/过渡色）
     if opts.dither:
-        assign = _dither_assign(small_rgb, empty, used, palette)
+        assign = _dither_assign(small_rgb, used, palette)
     else:
         used_arr = np.array(used, dtype=np.int64)
         d_sub = distance_matrix(flat, palette.rgb_array()[used_arr], opts.metric)
@@ -296,12 +239,9 @@ def build_pattern(rgb: np.ndarray, alpha: np.ndarray, palette: Palette, opts: Pa
     for y in range(gh):
         row = []
         for x in range(gw):
-            if empty[y, x]:
-                row.append(-1)
-            else:
-                c = int(assign[y, x])
-                row.append(c)
-                counts[c] = counts.get(c, 0) + 1
+            c = int(assign[y, x])
+            row.append(c)
+            counts[c] = counts.get(c, 0) + 1
         grid.append(row)
 
     # used_indices 按使用频率降序（决定 A/B/C 分配顺序）

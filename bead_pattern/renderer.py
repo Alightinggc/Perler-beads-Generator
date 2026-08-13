@@ -34,7 +34,6 @@ class RenderOptions:
     bead_look: bool = False        # 模拟豆子的内阴影
     text_lang: str = "zh"          # 图例名称语言 zh / en / both
     bg_color: tuple[int, int, int] = (255, 255, 255)  # 画布底色
-    empty_color: tuple[int, int, int] = (230, 230, 230)  # 空格底色
     margin: int = 8
     header_frac: float = 0.72      # 坐标头宽度/高度相对 cell
 
@@ -182,12 +181,6 @@ def render_pattern(
             x0 = grid_x0 + x * (cell + 1) if opts.grid_lines else grid_x0 + x * cell
             y1, x1 = y0 + cell, x0 + cell
             idx = pattern.grid[y][x]
-            if idx < 0:
-                draw.rectangle([x0, y0, x1 - 1, y1 - 1], fill=opts.empty_color)
-                if opts.grid_lines:
-                    draw.rectangle([x0, y0, x1 - 1, y1 - 1], outline=(120, 120, 120))
-                continue
-
             color = pattern.color_of(idx).rgb
             draw.rectangle([x0, y0, x1 - 1, y1 - 1], fill=color)
 
