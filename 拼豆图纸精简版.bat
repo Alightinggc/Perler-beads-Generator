@@ -11,8 +11,9 @@ REM 最多用色（0=不限）
 set MAXCOLORS=24
 REM 每格像素大小（越大色号越清晰，brand 建议 >=28）
 set CELL=30
-REM 额外参数，如 --coords(坐标) / --title "我的图纸" / --bg-hex "#FFFFFF"
+REM 额外参数，如 --coords(坐标) / --title "我的图纸"
 set EXTRA=--coords
+REM 抖动处理默认关闭（main.py 默认关）；想开启就在命令里加 --dither
 REM ========================================================
 
 :loop

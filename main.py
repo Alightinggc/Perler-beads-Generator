@@ -42,8 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="色差度量：ciede2000 更准，cie76 更快")
     g.add_argument("--max-colors", type=int, default=0,
                    help="最多用几种豆色（0=不限）。会贪心挑选最能代表本图的色号，自动合并相似颜色")
-    g.add_argument("--no-dither", dest="dither", action="store_false", default=True,
-                   help="关闭Floyd-Steinberg抖动（默认开启，能更好还原渐变/过渡色）")
+    g.add_argument("--dither", dest="dither", action="store_true", default=False,
+                   help="开启Floyd-Steinberg抖动（默认关闭；开启能更好还原渐变/过渡色）")
 
     # 标注
     g = p.add_argument_group("字符标注")

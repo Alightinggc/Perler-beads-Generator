@@ -85,7 +85,7 @@ python main.py --pick
 --title "我的图纸"      # 顶部标题
 --bead-look            # 给豆子加内阴影，更接近实物观感
 --lang zh              # 图例名称语言：zh / en / both
---no-dither            # 关闭Floyd-Steinberg抖动（默认开启，能更好还原渐变/过渡色）
+--dither               # 开启Floyd-Steinberg抖动（默认关闭；开启能更好还原渐变/过渡色）
 ```
 
 ### 输出

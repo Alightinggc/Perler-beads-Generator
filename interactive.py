@@ -26,7 +26,7 @@ P = {
     "coords": True,
     "grid": True,
     "bead": False,
-    "dither": True,   # Floyd-Steinberg 抖动（默认开启）
+    "dither": False,  # Floyd-Steinberg 抖动（默认关闭）
     "title": "",
     "width": 0,
     "height": 0,
@@ -61,8 +61,8 @@ def build_args():
         a.append("--no-grid-lines")
     if P["bead"]:
         a.append("--bead-look")
-    if not P["dither"]:
-        a.append("--no-dither")
+    if P["dither"]:
+        a.append("--dither")
     if P["title"]:
         a += ["--title", P["title"]]
     if P["width"]:

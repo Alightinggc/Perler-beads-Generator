@@ -26,7 +26,7 @@ class PatternOptions:
     height: int = 0            # 固定高度（格），0=不指定
     metric: str = "ciede2000"  # ciede2000 | cie76
     max_colors: int = 0        # 0 = 不限（用满色板）
-    dither: bool = True        # Floyd-Steinberg 抖动（默认开启，能更好还原渐变/过渡色）
+    dither: bool = False       # Floyd-Steinberg 抖动（默认关闭）
 
 
 @dataclass
@@ -226,7 +226,7 @@ def build_pattern(rgb: np.ndarray, palette: Palette, opts: PatternOptions) -> Pa
         assignment = d.argmin(axis=1)
         used = sorted(set(assignment.tolist()))
 
-    # 在子集内映射（可选 Floyd-Steinberg 抖动；默认开启能更好还原渐变/过渡色）
+    # 在子集内映射（可选 Floyd-Steinberg 抖动；默认关闭，开启能更好还原渐变/过渡色）
     if opts.dither:
         assign = _dither_assign(small_rgb, used, palette)
     else:
