@@ -30,6 +30,7 @@ class PatternOptions:
     bg_tolerance: float = 6.0  # 背景色匹配容差（CIEDE2000）
     auto_bg: bool = False      # 自动识别背景（取四周主色）
     auto_bg_ratio: float = 0.6  # 自动背景要求四周该色占比下限
+    dither: bool = True        # Floyd-Steinberg 抖动（默认开启，能更好还原渐变/过渡色）
 
 
 @dataclass
@@ -164,6 +165,17 @@ def _bg_mask(rgb: np.ndarray, bg: tuple[int, int, int], opts: PatternOptions) ->
     return (d[:, 0] <= opts.bg_tolerance).reshape(rgb.shape[:2])
 
 
+def _whiteish_mask(rgb: np.ndarray) -> np.ndarray:
+    """接近白色 / 灰度白的掩码（高亮度、低饱和），用于把大面积白色背景识别为空格。
+
+    例如纯白 #FFFFFF、浅灰 #E8E8E8 都会命中；而淡黄等有明显色相的浅色不会。
+    """
+    arr = rgb.astype(np.int16)
+    mx = np.maximum(np.maximum(arr[..., 0], arr[..., 1]), arr[..., 2])
+    mn = np.minimum(np.minimum(arr[..., 0], arr[..., 1]), arr[..., 2])
+    return (mx > 200) & ((mx - mn) < 30)
+
+
 # ---------------------------------------------------------------------------
 # 颜色映射 + 自动减色
 # ---------------------------------------------------------------------------
@@ -172,6 +184,39 @@ def map_to_palette(rgb: np.ndarray, palette: Palette, metric: str) -> np.ndarray
     flat = rgb.reshape(-1, 3).astype(np.float64)
     d = distance_matrix(flat, palette.rgb_array(), metric)
     return d.argmin(axis=1).reshape(rgb.shape[:2])
+
+
+def _dither_assign(rgb: np.ndarray, empty: np.ndarray, used: list[int], palette: Palette) -> np.ndarray:
+    """Floyd-Steinberg 抖动映射：在 used 色号子集内逐像素量化并把误差扩散到相邻像素。
+
+    返回 (H,W) int 数组（色板下标；空格处为 -1，外层仍用 empty 判断）。
+    误差在 RGB 空间按 7/16、3/16、5/16、1/16 比例扩散到右、左下、下、右下。
+    """
+    h, w = rgb.shape[:2]
+    used_arr = np.array(used, dtype=np.int64)
+    used_rgb = palette.rgb_array()[used_arr]  # (K,3)
+    work = rgb.astype(np.float64).copy()
+    assign = np.full((h, w), -1, dtype=np.int64)
+    for y in range(h):
+        for x in range(w):
+            if empty[y, x]:
+                continue
+            old = work[y, x]
+            d = ((used_rgb - old) ** 2).sum(axis=1)
+            k = int(d.argmin())
+            idx = int(used_arr[k])
+            assign[y, x] = idx
+            err = old - used_rgb[k]
+            if x + 1 < w and not empty[y, x + 1]:
+                work[y, x + 1] += err * (7 / 16)
+            if y + 1 < h:
+                if x > 0 and not empty[y + 1, x - 1]:
+                    work[y + 1, x - 1] += err * (3 / 16)
+                if not empty[y + 1, x]:
+                    work[y + 1, x] += err * (5 / 16)
+                if x + 1 < w and not empty[y + 1, x + 1]:
+                    work[y + 1, x + 1] += err * (1 / 16)
+    return assign
 
 
 def select_optimal_colors(
@@ -236,6 +281,11 @@ def build_pattern(rgb: np.ndarray, alpha: np.ndarray, palette: Palette, opts: Pa
     if bg is not None:
         empty |= _bg_mask(small_rgb, bg, opts)
 
+    # 大面积近白背景：识别为背景（空格），不参与颜色映射与抖动，避免白色背景与内容色混合
+    white = _whiteish_mask(small_rgb)
+    if white.mean() >= 0.2:
+        empty |= white
+
     flat = small_rgb.reshape(-1, 3).astype(np.float64)
     empty_flat = empty.reshape(-1)
 
@@ -247,21 +297,23 @@ def build_pattern(rgb: np.ndarray, alpha: np.ndarray, palette: Palette, opts: Pa
         assignment = d.argmin(axis=1)
         used = sorted(set(assignment[~empty_flat].tolist()))
 
-    # 在子集内重新精确映射
-    used_arr = np.array(used, dtype=np.int64)
-    d_sub = distance_matrix(flat, palette.rgb_array()[used_arr], opts.metric)
-    assign = used_arr[d_sub.argmin(axis=1)]
+    # 在子集内映射（可选 Floyd-Steinberg 抖动；默认开启能更好还原渐变/过渡色）
+    if opts.dither:
+        assign = _dither_assign(small_rgb, empty, used, palette)
+    else:
+        used_arr = np.array(used, dtype=np.int64)
+        d_sub = distance_matrix(flat, palette.rgb_array()[used_arr], opts.metric)
+        assign = used_arr[d_sub.argmin(axis=1)].reshape(gh, gw)
 
     grid = []
     counts: dict[int, int] = {}
-    flat_idx = assign.reshape(gh, gw)
     for y in range(gh):
         row = []
         for x in range(gw):
-            if empty_flat[y * gw + x]:
+            if empty[y, x]:
                 row.append(-1)
             else:
-                c = int(flat_idx[y, x])
+                c = int(assign[y, x])
                 row.append(c)
                 counts[c] = counts.get(c, 0) + 1
         grid.append(row)

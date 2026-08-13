@@ -26,6 +26,7 @@ P = {
     "coords": True,
     "grid": True,
     "bead": False,
+    "dither": True,   # Floyd-Steinberg 抖动（默认开启）
     "title": "",
     "bg_hex": "",
     "width": 0,
@@ -61,6 +62,8 @@ def build_args():
         a.append("--no-grid-lines")
     if P["bead"]:
         a.append("--bead-look")
+    if not P["dither"]:
+        a.append("--no-dither")
     if P["title"]:
         a += ["--title", P["title"]]
     if P["bg_hex"]:
@@ -119,9 +122,10 @@ def show_menu():
     print("  [5] 显示坐标 : %s   （开 / 关）" % ("开" if P["coords"] else "关"))
     print("  [6] 网格线   : %s   （显示 / 隐藏）" % ("显示" if P["grid"] else "隐藏"))
     print("  [7] 立体豆感 : %s   （开 / 关）" % ("开" if P["bead"] else "关"))
-    print("  [8] 图纸标题 : %s   （空=无标题）" % (P["title"] or "(无)"))
-    print("  [9] 背景色   : %s   （如 #FFFFFF，空=不处理）" % (P["bg_hex"] or "(不处理)"))
-    print("  [A] 底板尺寸 : %s x %s  （0=自动）" % (P["width"] or 0, P["height"] or 0))
+    print("  [8] 抖动处理 : %s   （Floyd-Steinberg，开 / 关）" % ("开" if P["dither"] else "关"))
+    print("  [9] 图纸标题 : %s   （空=无标题）" % (P["title"] or "(无)"))
+    print("  [A] 背景色   : %s   （如 #FFFFFF，空=不处理）" % (P["bg_hex"] or "(不处理)"))
+    print("  [B] 底板尺寸 : %s x %s  （0=自动）" % (P["width"] or 0, P["height"] or 0))
     print()
     print("  " + "-" * 58)
     print("  [S] 开始转换    [D] 生成示例图    [0] 退出")
@@ -273,10 +277,12 @@ def main_menu_loop():
         elif c == "7":
             P["bead"] = not P["bead"]
         elif c == "8":
-            set_title()
+            P["dither"] = not P["dither"]
         elif c == "9":
-            set_bg()
+            set_title()
         elif c == "a":
+            set_bg()
+        elif c == "b":
             set_size()
 
 

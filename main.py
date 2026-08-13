@@ -45,6 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--bg-hex", default="", help="把该颜色当作背景（空格不填豆），如 #FFFFFF")
     g.add_argument("--bg-tol", type=float, default=6.0, help="背景色匹配容差（CIEDE2000）")
     g.add_argument("--auto-bg", action="store_true", help="自动把图片四周主色识别为背景")
+    g.add_argument("--no-dither", dest="dither", action="store_false", default=True,
+                   help="关闭Floyd-Steinberg抖动（默认开启，能更好还原渐变/过渡色）")
 
     # 标注
     g = p.add_argument_group("字符标注")
@@ -185,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         bg_hex=args.bg_hex,
         bg_tolerance=args.bg_tol,
         auto_bg=args.auto_bg,
+        dither=args.dither,
     )
 
     print(f"读取图片: {args.input}")
@@ -201,7 +204,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.output:
         out_png = args.output
     else:
-        out_png = os.path.join(out_dir, f"{stem}_{args.palette}_{args.max_colors}_pattern.png")
+        # 同名文件自动加 (1)(2)...，避免覆盖
+        base_name = os.path.join(out_dir, f"{stem}_{args.palette}_{args.max_colors}")
+        out_png = f"{base_name}_pattern.png"
+        n = 0
+        while os.path.exists(out_png):
+            n += 1
+            out_png = f"{base_name} ({n})_pattern.png"
     out_csv = f"{os.path.splitext(out_png)[0]}_colors.csv"
     out_grid = f"{os.path.splitext(out_png)[0]}_grid.csv"
 
