@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .converter import Pattern, col_name
+from .converter import Pattern
 
 _FONT_DIRS = [
     "C:/Windows/Fonts",
@@ -173,7 +173,7 @@ def render_pattern(
             y0 = grid_y0 + y * (cell + 1) if opts.grid_lines else grid_y0 + y * cell
             y1 = y0 + cell
             draw.rectangle([margin, y0, margin + hdr - 1, y1], fill=(40, 40, 40))
-            _centered_text(draw, (margin, y0, margin + hdr - 1, y1), col_name(y), frow, (255, 255, 255))
+            _centered_text(draw, (margin, y0, margin + hdr - 1, y1), str(y + 1), frow, (255, 255, 255))
 
     # 网格单元格
     for y in range(gh):
