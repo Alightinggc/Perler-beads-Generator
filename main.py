@@ -71,6 +71,37 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--out-dir", default="output", help="输出目录（默认 output/，自动创建）")
     return p
 
+def _make_demo_image(path: str, size: tuple[int, int] = (160, 160)) -> None:
+    """生成一张彩色演示图片（用于 --demo），含多种颜色便于观察转换/减色效果。"""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", size, "white")
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, size[0] - 1, size[1] - 1], fill=(245, 245, 245))
+
+    cx, cy = size[0] // 2, size[1] // 2
+    r = size[0] * 0.30
+    # 黄色圆脸
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 214, 0))
+    # 眼睛
+    er = r * 0.13
+    d.ellipse([cx - r * 0.42 - er, cy - r * 0.25 - er, cx - r * 0.42 + er, cy - r * 0.25 + er],
+              fill=(40, 40, 40))
+    d.ellipse([cx + r * 0.42 - er, cy - r * 0.25 - er, cx + r * 0.42 + er, cy - r * 0.25 + er],
+              fill=(40, 40, 40))
+    # 微笑
+    d.arc([cx - r * 0.55, cy - r * 0.35, cx + r * 0.55, cy + r * 0.55],
+          start=20, end=160, fill=(40, 40, 40), width=max(3, int(r * 0.09)))
+    # 腮红
+    br = r * 0.18
+    d.ellipse([cx - r * 0.7, cy + r * 0.15, cx - r * 0.7 + 2 * br, cy + r * 0.15 + 2 * br],
+              fill=(255, 120, 130))
+    d.ellipse([cx + r * 0.7 - 2 * br, cy + r * 0.15, cx + r * 0.7, cy + r * 0.15 + 2 * br],
+              fill=(255, 120, 130))
+
+    img.save(path)
+
+
 def _pick_file() -> str:
     import tkinter as tk
     from tkinter import filedialog
@@ -88,17 +119,19 @@ def _pick_file() -> str:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    # 输入来源
-    out_dir = os.path.abspath(args.out_dir)
-    os.makedirs(out_dir, exist_ok=True)
+    # 是否由用户显式指定了 --out-dir（否则默认按输入文件名建同名子文件夹）
+    explicit_outdir = args.out_dir != "output"
 
     if args.demo:
-        demo_input = os.path.join(out_dir, "_demo_input.png")
+        demo_dir = os.path.abspath(os.path.join(args.out_dir, "_demo"))
+        os.makedirs(demo_dir, exist_ok=True)
+        demo_input = os.path.join(demo_dir, "_demo_input.png")
         if not os.path.exists(demo_input):
             _make_demo_image(demo_input)
         args.input = demo_input
         if not args.output:
-            args.output = os.path.join(out_dir, "_demo_pattern.png")
+            args.output = os.path.join(demo_dir, "_demo_pattern.png")
+        out_dir = demo_dir
     elif args.pick and not args.input:
         args.input = _pick_file()
         if not args.input:
@@ -112,6 +145,14 @@ def main(argv: list[str] | None = None) -> int:
     if not os.path.exists(args.input):
         print(f"错误：找不到输入文件 {args.input}")
         return 1
+
+    # 输出目录：未显式指定 --out-dir 时，输出到 output/输入文件名/ 同名子文件夹
+    stem = os.path.splitext(os.path.basename(args.input))[0]
+    if explicit_outdir:
+        out_dir = os.path.abspath(args.out_dir)
+    else:
+        out_dir = os.path.abspath(os.path.join(args.out_dir, stem))
+    os.makedirs(out_dir, exist_ok=True)
 
     # 色板
     from bead_pattern.palettes import load_palette, load_palette_csv
@@ -157,7 +198,6 @@ def main(argv: list[str] | None = None) -> int:
     print()
 
     # 输出文件名
-    stem = os.path.splitext(os.path.basename(args.input))[0]
     if args.output:
         out_png = args.output
     else:
