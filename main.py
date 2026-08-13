@@ -146,12 +146,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"错误：找不到输入文件 {args.input}")
         return 1
 
-    # 输出目录：未显式指定 --out-dir 时，输出到 output/输入文件名/ 同名子文件夹
+    # 输出目录：未显式指定 --out-dir 时，输出到 output/原文件名_品牌_最大颜色数/ 子文件夹
     stem = os.path.splitext(os.path.basename(args.input))[0]
     if explicit_outdir:
         out_dir = os.path.abspath(args.out_dir)
     else:
-        out_dir = os.path.abspath(os.path.join(args.out_dir, stem))
+        out_dir = os.path.abspath(os.path.join(args.out_dir, f"{stem}_{args.palette}_{args.max_colors}"))
     os.makedirs(out_dir, exist_ok=True)
 
     # 色板
