@@ -25,14 +25,14 @@ def save_legend_csv(path: str, pattern: Pattern, codes: dict[int, str]) -> None:
 
 
 def save_grid_csv(path: str, pattern: Pattern, codes: dict[int, str]) -> None:
-    """导出网格（行列=图纸坐标，单元格=字符代码）。"""
+    """导出网格（行列=图纸坐标，单元格=字符代码，空格为空字符串）。"""
     with open(path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
         for y in range(pattern.height):
             row = []
             for x in range(pattern.width):
                 idx = pattern.grid[y][x]
-                row.append(codes.get(idx, ""))
+                row.append(codes.get(idx, "") if idx >= 0 else "")
             w.writerow(row)
 
 

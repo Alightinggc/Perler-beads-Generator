@@ -172,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         PatternOptions,
         assign_codes,
         build_pattern,
-        load_rgb,
+        load_rgba,
     )
     from bead_pattern.exporter import (
         save_grid_csv,
@@ -191,9 +191,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print(f"读取图片: {args.input}")
-    rgb = load_rgb(args.input)
+    rgb, alpha = load_rgba(args.input)
     print(f"原图尺寸: {rgb.shape[1]} x {rgb.shape[0]}  使用色板: {palette.name}（{len(palette.colors)}色）")
-    pattern = build_pattern(rgb, palette, opts)
+    pattern = build_pattern(rgb, alpha, palette, opts)
     codes = assign_codes(pattern.used_indices, args.label_style, palette)
 
     print()

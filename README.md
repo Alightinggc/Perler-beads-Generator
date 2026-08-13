@@ -75,6 +75,8 @@ python main.py --pick
 --metric ciede2000  # 色差度量：ciede2000 更养眼（推荐）/ cie76 更快
 ```
 
+透明像素（alpha < 128）会自动当作空格，不填豆。
+
 ### 字符标注与出图
 ```bash
 --label-style letter   # 单元格代码：letter=A,B,C...(推荐) / number=1,2,3... / brand=P01,A01,H01
