@@ -29,6 +29,7 @@ P = {
     "dither": True,   # Floyd-Steinberg 抖动（默认开启）
     "title": "",
     "bg_hex": "",
+    "bg_tol": 30,     # 背景过滤容差（PS 风格，越大删得越多）
     "width": 0,
     "height": 0,
 }
@@ -68,6 +69,7 @@ def build_args():
         a += ["--title", P["title"]]
     if P["bg_hex"]:
         a += ["--bg-hex", P["bg_hex"]]
+        a += ["--bg-tol", str(P["bg_tol"])]
     if P["width"]:
         a += ["--width", str(P["width"])]
     if P["height"]:
@@ -124,7 +126,7 @@ def show_menu():
     print("  [7] 立体豆感 : %s   （开 / 关）" % ("开" if P["bead"] else "关"))
     print("  [8] 抖动处理 : %s   （Floyd-Steinberg，开 / 关）" % ("开" if P["dither"] else "关"))
     print("  [9] 图纸标题 : %s   （空=无标题）" % (P["title"] or "(无)"))
-    print("  [A] 背景色   : %s   （如 #FFFFFF，空=不处理）" % (P["bg_hex"] or "(不处理)"))
+    print("  [A] 过滤背景 : %s 容差%s  （类似PS取色去背，空=不处理）" % (P["bg_hex"] or "(无)", P["bg_tol"]))
     print("  [B] 底板尺寸 : %s x %s  （0=自动）" % (P["width"] or 0, P["height"] or 0))
     print()
     print("  " + "-" * 58)
@@ -183,9 +185,18 @@ def set_title():
 
 def set_bg():
     clear()
-    print("把指定颜色当作背景（空格不填豆）。示例：#FFFFFF（白）、#000000（黑）")
-    t = input("请输入背景色HEX（直接回车 = 不处理）：").strip()
+    print("背景过滤（类似 PS 取色去背）：指定一个颜色 + 容差，容差范围内的颜色都作为背景（空格不填豆）")
+    print("  过滤色：要删的背景色，如 #FFFFFF（白）、#000000（黑）")
+    print("  容差：0~255，越大覆盖的颜色范围越广（默认 %s）" % P["bg_tol"])
+    print()
+    t = input("请输入过滤色HEX（直接回车 = 不处理）：").strip()
+    if not t:
+        P["bg_hex"] = ""
+        return
     P["bg_hex"] = t
+    tol = input("请输入容差（回车用默认 %s）：" % P["bg_tol"]).strip()
+    if tol.isdigit():
+        P["bg_tol"] = int(tol)
 
 
 def set_size():

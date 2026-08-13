@@ -165,15 +165,6 @@ def _bg_mask(rgb: np.ndarray, bg: tuple[int, int, int], opts: PatternOptions) ->
     return (d[:, 0] <= opts.bg_tolerance).reshape(rgb.shape[:2])
 
 
-def _whiteish_mask(rgb: np.ndarray) -> np.ndarray:
-    """接近白色 / 灰度白的掩码（高亮度、低饱和），用于把大面积白色背景识别为空格。
-
-    例如纯白 #FFFFFF、浅灰 #E8E8E8 都会命中；而淡黄等有明显色相的浅色不会。
-    """
-    arr = rgb.astype(np.int16)
-    mx = np.maximum(np.maximum(arr[..., 0], arr[..., 1]), arr[..., 2])
-    mn = np.minimum(np.minimum(arr[..., 0], arr[..., 1]), arr[..., 2])
-    return (mx > 200) & ((mx - mn) < 30)
 
 
 # ---------------------------------------------------------------------------
@@ -275,16 +266,11 @@ def build_pattern(rgb: np.ndarray, alpha: np.ndarray, palette: Palette, opts: Pa
         small_rgb = rgb
         small_alpha = alpha
 
-    # 空格掩码：透明 或 背景色
+    # 空格掩码：透明 或 用户指定的背景过滤色（--bg-hex + --bg-tol，类似 PS 取色去背）
     empty = small_alpha < 128
     bg = _detect_background(small_rgb, opts)
     if bg is not None:
         empty |= _bg_mask(small_rgb, bg, opts)
-
-    # 大面积近白背景：识别为背景（空格），不参与颜色映射与抖动，避免白色背景与内容色混合
-    white = _whiteish_mask(small_rgb)
-    if white.mean() >= 0.2:
-        empty |= white
 
     flat = small_rgb.reshape(-1, 3).astype(np.float64)
     empty_flat = empty.reshape(-1)
