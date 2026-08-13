@@ -113,16 +113,15 @@ def show_menu():
         print()
     print("  [1] 品牌/色板 : %s" % P["palette"])
     print("      %s" % PALETTE_NOTE.get(P["palette"], ""))
-    print("  [2] 图例语言 : %s   （zh=中文 / en=English / both=双语）" % P["lang"])
-    print("  [3] 色号标注 : %s   （brand=品牌色号 / letter=ABC / number=123）" % P["label"])
-    print("  [4] 最多用色 : %s   （0=不限；常用 12/24/36）" % P["max_colors"])
-    print("  [5] 每格大小 : %s px  （越大色号越清晰，brand 建议 28+）" % P["cell"])
-    print("  [6] 显示坐标 : %s   （开 / 关）" % ("开" if P["coords"] else "关"))
-    print("  [7] 网格线   : %s   （显示 / 隐藏）" % ("显示" if P["grid"] else "隐藏"))
-    print("  [8] 立体豆感 : %s   （开 / 关）" % ("开" if P["bead"] else "关"))
-    print("  [9] 图纸标题 : %s   （空=无标题）" % (P["title"] or "(无)"))
-    print("  [A] 背景色   : %s   （如 #FFFFFF，空=不处理）" % (P["bg_hex"] or "(不处理)"))
-    print("  [B] 底板尺寸 : %s x %s  （0=自动）" % (P["width"] or 0, P["height"] or 0))
+    print("  [2] 色号标注 : %s   （brand=品牌色号 / letter=ABC / number=123）" % P["label"])
+    print("  [3] 最多用色 : %s   （0=不限；常用 12/24/36）" % P["max_colors"])
+    print("  [4] 每格大小 : %s px  （越大色号越清晰，brand 建议 28+）" % P["cell"])
+    print("  [5] 显示坐标 : %s   （开 / 关）" % ("开" if P["coords"] else "关"))
+    print("  [6] 网格线   : %s   （显示 / 隐藏）" % ("显示" if P["grid"] else "隐藏"))
+    print("  [7] 立体豆感 : %s   （开 / 关）" % ("开" if P["bead"] else "关"))
+    print("  [8] 图纸标题 : %s   （空=无标题）" % (P["title"] or "(无)"))
+    print("  [9] 背景色   : %s   （如 #FFFFFF，空=不处理）" % (P["bg_hex"] or "(不处理)"))
+    print("  [A] 底板尺寸 : %s x %s  （0=自动）" % (P["width"] or 0, P["height"] or 0))
     print()
     print("  " + "-" * 58)
     print("  [S] 开始转换    [D] 生成示例图    [0] 退出")
@@ -138,16 +137,6 @@ def set_palette():
     print("  [4] hama   - Hama 28 色（H01-H28）")
     c = ask("1234", "请选择：")
     P["palette"] = {"1": "mard", "2": "perler", "3": "artkal", "4": "hama"}[c]
-
-
-def set_lang():
-    clear()
-    print("选择图例颜色名称语言：")
-    print("  [1] zh   - 中文")
-    print("  [2] en   - English")
-    print("  [3] both - 中英双语")
-    c = ask("123", "请选择：")
-    P["lang"] = {"1": "zh", "2": "en", "3": "both"}[c]
 
 
 def set_label():
@@ -272,24 +261,22 @@ def main_menu_loop():
         elif c == "1":
             set_palette()
         elif c == "2":
-            set_lang()
-        elif c == "3":
             set_label()
-        elif c == "4":
+        elif c == "3":
             set_maxcolors()
-        elif c == "5":
+        elif c == "4":
             set_cell()
-        elif c == "6":
+        elif c == "5":
             P["coords"] = not P["coords"]
-        elif c == "7":
+        elif c == "6":
             P["grid"] = not P["grid"]
-        elif c == "8":
+        elif c == "7":
             P["bead"] = not P["bead"]
-        elif c == "9":
+        elif c == "8":
             set_title()
-        elif c == "a":
+        elif c == "9":
             set_bg()
-        elif c == "b":
+        elif c == "a":
             set_size()
 
 

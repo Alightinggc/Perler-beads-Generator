@@ -275,7 +275,7 @@ def _draw_legend(img, draw, items, margin, y_top, cell, opts, max_w: int):
     # 背景
     draw.rectangle([margin, y_top, img.width - margin, y_top + _measure_legend(items, avail_w, cell, opts)[0] - 1],
                    fill=(245, 245, 245))
-    draw.text((margin + pad, y_top + 4), "色号图例 Legend", font=ftitle, fill=(40, 40, 40))
+    draw.text((margin + pad, y_top + 4), "色号图例 Color Legend", font=ftitle, fill=(40, 40, 40))
 
     row_h = cell + 8
     for i, (code, rgb, name, cnt) in enumerate(items):
