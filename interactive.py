@@ -39,6 +39,9 @@ PALETTE_NOTE = {
     "hama": "Hama 28色(H01-H28)",
 }
 
+# 拖拽到 bat 图标时接收的待处理文件（进入菜单后由用户先调参数再转换）
+PENDING_FILES = []
+
 
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
@@ -101,6 +104,13 @@ def show_menu():
     print("  拼豆图纸转换器 - 参数调节面板")
     print("=" * 60)
     print()
+    if PENDING_FILES:
+        names = "、".join(os.path.basename(f) for f in PENDING_FILES[:3])
+        if len(PENDING_FILES) > 3:
+            names += " ... 共%d张" % len(PENDING_FILES)
+        print("  ★ 已选文件：%s" % names)
+        print("    （按 S 开始转换，或继续调节参数）")
+        print()
     print("  [1] 品牌/色板 : %s" % P["palette"])
     print("      %s" % PALETTE_NOTE.get(P["palette"], ""))
     print("  [2] 图例语言 : %s   （zh=中文 / en=English / both=双语）" % P["lang"])
@@ -201,6 +211,23 @@ def convert_menu():
         print("=" * 60)
         print("  选择输入方式")
         print("=" * 60)
+        if PENDING_FILES:
+            print("  已选文件（%d 张）：" % len(PENDING_FILES))
+            for f in PENDING_FILES:
+                print("    - %s" % os.path.basename(f))
+            print()
+            print("  [1] 用已选文件转换（可先回主菜单调参数）")
+            print("  [2] 重新选择文件（清空已选）")
+            print("  [3] 返回主菜单")
+            print("=" * 60)
+            c = ask("123", "请选择：")
+            if c == "3":
+                return
+            if c == "1":
+                run_converter(files=list(PENDING_FILES))
+                continue
+            PENDING_FILES.clear()
+            continue
         print("  [1] 输入图片路径（可把一张或多张图片拖进窗口）")
         print("  [2] 弹出文件选择框（推荐，支持中文/带空格路径）")
         print("  [3] 返回主菜单")
@@ -223,20 +250,12 @@ def convert_menu():
             files = shlex.split(text)
         except ValueError:
             files = text.split()
+        files = [f for f in files if os.path.isfile(f)]
         if not files:
             print("未输入有效路径，返回菜单。")
             input("按回车键继续...")
             continue
         run_converter(files=files)
-
-
-def drag_convert(files):
-    print()
-    print("已拖入文件，使用当前默认参数直接转换：")
-    print("  色板=%s   标注=%s   最多用色=%s" % (P["palette"], P["label"], P["max_colors"]))
-    print("  格子=%spx   语言=%s   坐标=%s" % (P["cell"], P["lang"], "开" if P["coords"] else "关"))
-    print("-" * 60)
-    run_converter(files=files)
 
 
 def main_menu_loop():
@@ -275,13 +294,9 @@ def main_menu_loop():
 
 
 def main():
-    files = [a for a in sys.argv[1:] if os.path.isfile(a)]
-    if files:
-        drag_convert(files)
-        c = ask("12", "接下来怎么办？ [1] 进入参数菜单调节  [2] 退出：")
-        if c == "1":
-            main_menu_loop()
-        return
+    global PENDING_FILES
+    # 拖入到 bat 图标上的文件先进菜单，由用户先调参数再转换（不直接转换）
+    PENDING_FILES = [a for a in sys.argv[1:] if os.path.isfile(a)]
     main_menu_loop()
 
 
