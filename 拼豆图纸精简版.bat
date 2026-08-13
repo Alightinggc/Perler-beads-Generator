@@ -22,7 +22,7 @@ echo ========================================
 echo  拼豆图纸转换器 - 正在处理: %~nx1
 echo ========================================
 echo.
-python main.py "%~1" --palette %PALETTE% --label-style %LABEL% --max-colors %MAXCOLORS% --cell %CELL% --out-dir "output\%~n1" %EXTRA%
+python main.py "%~1" --palette %PALETTE% --label-style %LABEL% --max-colors %MAXCOLORS% --cell %CELL% --out-dir "output\%~n1" %EXTRA% --no-colors-csv --no-grid-csv
 shift
 goto loop
 
