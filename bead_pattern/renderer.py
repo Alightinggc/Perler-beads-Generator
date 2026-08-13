@@ -250,7 +250,7 @@ def _measure_legend(items, max_w: int, cell: int, opts: RenderOptions) -> tuple[
     cols = max(1, avail_w // item_w)
     rows = (len(items) + cols - 1) // cols
     row_h = cell + 8
-    title_h = int(cell * 0.9)
+    title_h = int(cell * 1.2)
     total_h = int(title_h + rows * row_h + pad)
     total_w = int(cols * item_w)
     return total_h, total_w
@@ -275,14 +275,14 @@ def _draw_legend(img, draw, items, margin, y_top, cell, opts, max_w: int):
     # 背景
     draw.rectangle([margin, y_top, img.width - margin, y_top + _measure_legend(items, avail_w, cell, opts)[0] - 1],
                    fill=(245, 245, 245))
-    draw.text((margin + pad, y_top + 4), "色号图例 Color Legend", font=ftitle, fill=(40, 40, 40))
+    draw.text((margin + pad, y_top + 2), "色号图例 Color Legend", font=ftitle, fill=(40, 40, 40))
 
     row_h = cell + 8
     for i, (code, rgb, name, cnt) in enumerate(items):
         col = i % cols
         row = i // cols
         x = margin + pad + col * item_w
-        y = y_top + int(cell * 0.9) + row * row_h
+        y = y_top + int(cell * 1.2) + row * row_h
         draw.rectangle([x, y, x + swatch - 1, y + swatch - 1], fill=rgb, outline=(80, 80, 80))
         text = f"{code}  {name}  x{cnt}"
         draw.text((x + swatch + pad, y + 1), text, font=f, fill=(40, 40, 40))
