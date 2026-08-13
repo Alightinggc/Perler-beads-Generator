@@ -197,11 +197,11 @@ def main(argv: list[str] | None = None) -> int:
     print(summary_text(pattern, codes))
     print()
 
-    # 输出文件名
+    # 输出文件名（默认格式：原文件名_品牌_最大颜色数_pattern.png）
     if args.output:
         out_png = args.output
     else:
-        out_png = os.path.join(out_dir, f"{stem}_pattern.png")
+        out_png = os.path.join(out_dir, f"{stem}_{args.palette}_{args.max_colors}_pattern.png")
     out_csv = f"{os.path.splitext(out_png)[0]}_colors.csv"
     out_grid = f"{os.path.splitext(out_png)[0]}_grid.csv"
 
