@@ -50,6 +50,7 @@ import glob
 import os
 import re
 import sys
+from collections import Counter
 
 import numpy as np
 from PIL import Image, ImageFilter
@@ -284,6 +285,138 @@ def detect_block_size(img: Image.Image,
 
 
 # ---------------------------------------------------------------------------
+# 1b. 网格线检测（处理块大小非整数 / 局部变化 / 相邻同色合并）
+# ---------------------------------------------------------------------------
+
+GRID_PEAK_MIN_H = 0.10  # 边界分数局部极大值的阈值（该列有多少比例的行有边界）
+
+
+def _boundary_scores(img: Image.Image, tol: int = COLOR_TOL) -> tuple[np.ndarray, np.ndarray]:
+    """返回 (列边界分数, 行边界分数)。
+
+    列边界分数 col_score[i] = 第 i 列位置上有“垂直颜色边界”的行比例；
+    像素格的真实分界列处接近 1，块内部接近 0。先做 3×3 中值滤波去噪。
+    """
+    denoised = np.asarray(to_rgb(img).filter(ImageFilter.MedianFilter(3)), dtype=np.int16)
+    dx = (np.abs(np.diff(denoised, axis=1)).sum(axis=2) > tol)  # (H, W-1) 垂直边界
+    dy = (np.abs(np.diff(denoised, axis=0)).sum(axis=2) > tol)  # (H-1, W) 水平边界
+    col_score = dx.mean(axis=0)  # (W-1,)
+    row_score = dy.mean(axis=1)  # (H-1,)
+    return col_score, row_score
+
+
+def _find_peaks(score: np.ndarray, min_h: float = GRID_PEAK_MIN_H) -> list[int]:
+    """找分数曲线的局部极大值，作为像素格分界（网格线）候选位置。"""
+    n = len(score)
+    return [i for i in range(1, n - 1)
+            if score[i] >= score[i - 1] and score[i] > score[i + 1] and score[i] >= min_h]
+
+
+def _estimate_period(pts: list[int]) -> int:
+    """从峰值位置估算“一个逻辑像素”的周期（块大小）。"""
+    if len(pts) < 2:
+        return 1
+    gaps = np.diff(pts)
+    gaps = gaps[gaps >= 2]
+    if gaps.size == 0:
+        return 1
+    counts = Counter(gaps.tolist())
+    k, c = counts.most_common(1)[0]
+    if c / gaps.size < 0.4:
+        k = int(np.median(gaps))
+    return max(1, k)
+
+
+def _median_period(pts: list[int]) -> float | None:
+    """峰值间距的中位数 = 一个逻辑像素的平均宽度。"""
+    if len(pts) < 2:
+        return None
+    gaps = np.diff(pts)
+    gaps = gaps[gaps >= 2]
+    if gaps.size == 0:
+        return None
+    return float(np.median(gaps))
+
+
+def uniform_grid_aligned(pts: list[int], size: int, max_block: int) -> list[int] | None:
+    """生成对齐像素画的均匀网格线（首条 0，末条 size）。
+
+    - 块大小 = 峰值间距中位数取整（一个逻辑像素的宽度）；
+    - 格数 n = round(尺寸/块大小)；
+    - 网格线 = 0, size/n, 2×size/n, …（从图左/上缘 0 开始均匀切分）。
+
+    注：峰值仅用于估计块大小；网格边界不从峰值吸附——实测截图/缩放过的
+    像素画中，边界检测峰值常有 1~4px 系统性偏移，吸附反而导致错位。
+    """
+    step_f = _median_period(pts)
+    if not step_f:
+        return None
+    step = max(1, round(step_f))
+    if not (2 <= step <= max_block):
+        return None
+    # 平均格宽过小（<4px）说明不是“大像素格”像素画（可能是单像素图/照片），
+    # 返回 None 让调用方回退到块大小法（能正确判为“无需缩小”）
+    if step < 4:
+        return None
+    n = max(1, round(size / step))
+    return [round(i * size / n) for i in range(n + 1)]
+
+
+def make_grid_from_peaks(pts: list[int], k: float, limit: int) -> list[int]:
+    """以峰值为锚点、按周期 k 生成完整网格线（含图左/上缘 0 与右/下缘 limit）。
+
+    每条峰值位置向两侧扩展 ±n×k（k 可为非整数，位置取整），合并去重得到完整网格。
+    这样既能精确定位非整数块（如 51.5px）的边界，也能把相邻同色导致
+    边界极弱、峰值漏检的那条边界按周期补回来。
+    """
+    import math
+
+    lines = {0, limit}
+    for p in pts:
+        n0 = math.floor((0.0 - p) / k)
+        n1 = math.ceil((limit - 0.0 - p) / k)
+        for n in range(n0, n1 + 1):
+            pos = p + n * k
+            if 0 < pos < limit:
+                lines.add(int(round(pos)))
+    return sorted(lines)
+
+
+def detect_pixel_grid(img: Image.Image, max_block: int = DEFAULT_MAX_BLOCK,
+                      tol: int = COLOR_TOL) -> dict | None:
+    """网格线检测：直接定位每个逻辑像素的边界（不假设整数块大小）。
+
+    返回 dict：{col_lines, row_lines, k_col, k_row, cols, rows, offset_x, offset_y}
+    检测不到足够边界时返回 None（调用方回退到块大小法）。
+    """
+    a_img = analysis_image(img)
+    aW, aH = a_img.size
+    col_s, row_s = _boundary_scores(a_img, tol)
+    col_pts = _find_peaks(col_s)
+    row_pts = _find_peaks(row_s)
+    if len(col_pts) < 2 or len(row_pts) < 2:
+        return None
+    # 网格线：step=峰值间距取整，offset=峰值 mod step 的众数（对齐相位）
+    col_lines = uniform_grid_aligned(col_pts, aW, max_block)
+    row_lines = uniform_grid_aligned(row_pts, aH, max_block)
+    if not col_lines or not row_lines or len(col_lines) < 2 or len(row_lines) < 2:
+        return None
+    # 换算回原图坐标（末条保留为图宽/图高）
+    W, H = img.size
+    sx, sy = W / aW, H / aH
+    col_lines = sorted(set(min(max(round(c * sx), 0), W) for c in col_lines))
+    row_lines = sorted(set(min(max(round(r * sy), 0), H) for r in row_lines))
+    return {
+        "col_lines": col_lines,
+        "row_lines": row_lines,
+        "k_col": _median_period(col_pts) or 0,
+        "k_row": _median_period(row_pts) or 0,
+        "cols": len(col_lines) - 1,
+        "rows": len(row_lines) - 1,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 2. 缩小
 # ---------------------------------------------------------------------------
 
@@ -352,23 +485,53 @@ def _mode_of_blocks(b: np.ndarray, quant_bits: int = 3) -> np.ndarray:
 
     # 慢路径：混合块逐块求主色簇
     ys, xs = np.nonzero(~same)
-    shift = 8 - quant_bits
     for i, j in zip(ys.tolist(), xs.tolist()):
-        vals = b[i, j]
-        opaque = vals[..., 3] >= 128
-        if not opaque.any():
-            res[i, j] = (0, 0, 0, 0)
-            continue
-        rgb = vals[opaque, :3].astype(np.int64)
-        q = (rgb >> shift) & ((1 << quant_bits) - 1)
-        enc = (q[..., 0] << (2 * quant_bits)) | (q[..., 1] << quant_bits) | q[..., 2]
-        counts = np.bincount(enc)
-        cluster = int(np.argmax(counts))
-        mask = enc == cluster
-        avg = np.rint(rgb[mask].mean(axis=0)).astype(np.uint8)
-        res[i, j, :3] = avg
-        res[i, j, 3] = 255
+        res[i, j] = _mode_of_block(b[i, j], quant_bits)
     return res
+
+
+def _mode_of_block(block: np.ndarray, quant_bits: int = 3) -> np.ndarray:
+    """单块主色：block: (h, w, 4) int16 → 主色簇平均色 (4,) uint8。
+
+    透明像素占多数的块输出全透明。
+    """
+    vals = block.reshape(-1, 4)
+    opaque = vals[..., 3] >= 128
+    if not opaque.any():
+        return np.array([0, 0, 0, 0], dtype=np.uint8)
+    rgb = vals[opaque, :3].astype(np.int64)
+    shift = 8 - quant_bits
+    q = (rgb >> shift) & ((1 << quant_bits) - 1)
+    enc = (q[..., 0] << (2 * quant_bits)) | (q[..., 1] << quant_bits) | q[..., 2]
+    counts = np.bincount(enc)
+    cluster = int(np.argmax(counts))
+    mask = enc == cluster
+    avg = np.rint(rgb[mask].mean(axis=0)).astype(np.uint8)
+    return np.concatenate([avg, [255]])
+
+
+def grid_mode_downscale(img: Image.Image, col_lines: list[int],
+                        row_lines: list[int]) -> Image.Image:
+    """网格线重建：按检测到的网格线把图片切成逻辑像素格，每格取主色。
+
+    网格线首条即内容起点（之前的偏移区会被自动裁掉），末条补图宽/图高，
+    因此相邻两条网格线之间恰好是一个逻辑像素。
+    """
+    rgba = np.asarray(to_rgba(img), dtype=np.int16)
+    H, W, _ = rgba.shape
+    xs = sorted(set([W] + [min(max(int(c), 0), W) for c in col_lines]))
+    ys = sorted(set([H] + [min(max(int(r), 0), H) for r in row_lines]))
+    out = np.empty((len(ys) - 1, len(xs) - 1, 4), dtype=np.uint8)
+    for i in range(len(ys) - 1):
+        y0, y1 = ys[i], ys[i + 1]
+        if y1 <= y0:
+            continue
+        for j in range(len(xs) - 1):
+            x0, x1 = xs[j], xs[j + 1]
+            if x1 <= x0:
+                continue
+            out[i, j] = _mode_of_block(rgba[y0:y1, x0:x1])
+    return Image.fromarray(out, "RGBA")
 
 
 # ---------------------------------------------------------------------------
@@ -478,10 +641,34 @@ def process_file(in_path: str, args: argparse.Namespace) -> tuple[str, dict] | N
 
     W, H = img.size
     raw_W, raw_H = W, H   # 偏移对齐前的尺寸（用于报告）
-    kx = ky = 1
+    kx = ky = 0
     det_info = None
-    use_mode = False  # auto 模式下是否需要用块主色聚合去噪
 
+    # —— 自动检测主路径：网格线重建 ——
+    # 直接定位每个逻辑像素的边界（处理非整数块大小、相邻同色合并、JPEG 噪点）
+    if not args.block and not args.scale:
+        grid = detect_pixel_grid(img, max_block=args.max_block)
+        if grid is not None:
+            small = grid_mode_downscale(img, grid["col_lines"], grid["row_lines"])
+            tw, th = small.size
+            det_info = grid
+            if args.quantize and args.quantize > 0 and (tw, th) != (W, H):
+                q = small.quantize(args.quantize, method=Image.Quantize.FASTOCTREE) \
+                    if "A" in small.getbands() \
+                    else small.quantize(args.quantize, method=Image.Quantize.MEDIANCUT)
+                small = q.convert("RGBA")
+            rep = _report_info(in_path, img, raw_W, raw_H, kx, ky, tw, th, small, "", args, det_info)
+            if args.info:
+                return None, rep
+            out_dir = args.out_dir or os.path.dirname(os.path.abspath(in_path))
+            os.makedirs(out_dir, exist_ok=True)
+            stem = os.path.splitext(os.path.basename(in_path))[0]
+            out_path = unique_path(os.path.join(out_dir, f"{stem}_{tw}x{th}.png"))
+            save_image(small, out_path)
+            return out_path, rep
+
+    # —— 其余路径：手动 block / scale / 网格检测失败回退到块大小法 ——
+    use_mode = False  # auto 模式下是否需要用块主色聚合去噪
     if args.block:
         kx, ky = parse_block(args.block)
         # 手动指定块大小，但也自动对齐像素格起始偏移
@@ -503,8 +690,7 @@ def process_file(in_path: str, args: argparse.Namespace) -> tuple[str, dict] | N
             tw, th = max(1, round(W / k)), max(1, round(H / k))
             # auto 模式：块内颜色干净（重建误差小）用最近邻；
             # 块内有噪点（网格线/JPEG，重建误差大）用块主色聚合去噪
-            err_at_k = det_info["errs"].get(det_info["k_small"], 1.0)
-            use_mode = err_at_k >= ERR_TOL
+            use_mode = det_info["errs"].get(det_info["k_small"], 1.0) >= ERR_TOL
         else:
             tw, th = W, H
 
@@ -578,7 +764,11 @@ def print_report(r: dict) -> None:
     print(f"输入文件:  {r['input']}")
     print(f"原图尺寸:  {W} x {H} 像素")
     if det is not None:
-        if det.get("manual"):
+        if "col_lines" in det:
+            # 网格线重建（自动检测主路径）
+            print(f"像素格:    自动检测 = 平均 {det.get('k_col', 0):.1f} x {det.get('k_row', 0):.1f} px"
+                  f"  (网格 {det['cols']} x {det['rows']})")
+        elif det.get("manual"):
             print(f"块大小:    手动指定 = {r['kx']} x {r['ky']} 像素")
         else:
             print(f"块大小:    自动检测 = {r['kx']} x {r['ky']} 像素"
