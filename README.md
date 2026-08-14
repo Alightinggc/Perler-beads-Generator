@@ -69,6 +69,37 @@ python main.py --pick
 > **同名不覆盖**：如果已存在同名的输出文件夹，会自动新建 `(1)`、`(2)`… 的独立文件夹（如 `output/chicken_mard_24 (1)/`），文件夹内文件名保持干净；每次转换都是独立一批，互不覆盖。
 > 显式指定 `--out-dir`（或 `--output`）时则输出到你指定的位置。
 
+## 配套工具：先把大图缩回单像素（`shrink_pixel_art.py`）
+
+如果你的图片是**截图 / 放大保存**的像素画（一个像素格在图片里占了很多像素），
+直接转换会让图纸巨大、看不清颜色。先用这个小工具**自动检测每个像素格占多大**，
+再缩回单像素风格，且不破坏原图的像素分布（自动处理位置偏移/起点不对齐，
+也会自动去掉被截断的残缺边缘格）：
+
+```bash
+# 自动检测并缩小（默认输出到图片同目录，命名 <名>_<宽>x<高>.png）
+python shrink_pixel_art.py 截图.png
+
+# 手动指定每格像素数（如截图里一格占 20 像素）
+python shrink_pixel_art.py 截图.png --block 20
+
+# JPEG/抗锯齿图：缩小后再把颜色量化成 12 种，方便看色号
+python shrink_pixel_art.py 截图.jpg --quantize 12
+
+# 先裁掉四周白边/边框再缩小
+python shrink_pixel_art.py 截图.png --autocrop
+
+# 只检测并打印信息，不保存
+python shrink_pixel_art.py 截图.png --info
+
+# 批量处理整个目录 / 通配符
+python shrink_pixel_art.py 图片目录
+python shrink_pixel_art.py "*.png"
+```
+
+技术栈：`numpy` + `Pillow`（自动块大小检测 + 最近邻插值 / 块主色聚合）。
+用法与原理详见该文件顶部注释。
+
 ## 常用参数
 
 ### 网格尺寸
