@@ -6,7 +6,7 @@ REM Shrink Pixel Art - auto downscale big-pixel pixel art images.
 REM Common extras (see shrink_pixel_art.py header for all options):
 REM   set EXTRA=--autocrop
 REM   set EXTRA=--quantize 12
-REM   set EXTRA=--out-dir "output"
+REM   set EXTRA=--out-dir "output_"
 REM Full list: python shrink_pixel_art.py --help
 set EXTRA=
 REM ========================================================================
@@ -25,8 +25,8 @@ goto loop
 
 :done
 echo.
-echo All done! Results are saved next to each image
-echo (or into the folder given by --out-dir in EXTRA).
+echo All done! Results are saved into the "output_" folder
+echo (or the folder given by --out-dir in EXTRA).
 echo.
 echo Press any key to close...
 pause >nul

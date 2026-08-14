@@ -13,7 +13,7 @@
 
 用法示例
 --------
-  python shrink_pixel_art.py 图.png                  # 自动检测并缩小（保存到同目录）
+  python shrink_pixel_art.py 图.png                  # 自动检测并缩小（默认输出到 output_/）
   python shrink_pixel_art.py 图.png --out-dir out    # 输出到指定目录
   python shrink_pixel_art.py 图.png --block 20       # 手动指定每格 20 像素
   python shrink_pixel_art.py 图.png --block 20x10    # 每格宽 20、高 10
@@ -61,6 +61,8 @@ DEFAULT_MAX_BLOCK = 64  # 自动检测时的最大候选块大小
 COLOR_TOL = 35          # “两种颜色不同”判定阈值：RGB 三通道差之和超过它视为不同
 ERR_TOL = 0.03          # 重建不一致比例低于该值，认为块大小正确
 ANALYSIS_MAX_SIDE = 2048  # 检测用图片的最大边长（超大图先缩到该尺寸再检测，提速）
+# 默认输出目录：脚本所在文件夹下的 output_
+DEFAULT_OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output_")
 
 
 # ---------------------------------------------------------------------------
@@ -813,7 +815,8 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("inputs", nargs="*", help="图片文件 / 目录 / 通配符（可多个）")
-    p.add_argument("-o", "--out-dir", help="输出目录（默认与输入同目录）")
+    p.add_argument("-o", "--out-dir", default=DEFAULT_OUT_DIR,
+                   help="输出目录（默认 output_/，自动创建）")
     p.add_argument("--block", help="手动指定每格像素数，如 20 或 20x10（默认自动检测）")
     p.add_argument("--scale", type=float, help="手动指定缩放比例，如 0.1 表示缩小到十分之一")
     p.add_argument("--max-block", type=int, default=DEFAULT_MAX_BLOCK,
