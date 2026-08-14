@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拼豆图纸转换器 · 网页版</title>
+<style>
+  :root {
+    --bg: #11141b;
+    --bg2: #171b23;
+    --card: #1c2029;
+    --card2: #222732;
+    --line: #2e3442;
+    --text: #e6e9f0;
+    --muted: #9aa2b5;
+    --accent: #4a7bd8;
+    --ok: #3fa37f;
+    --warn: #c99a3a;
+    --err: #d96b6b;
+    --shadow: 0 8px 24px rgba(0,0,0,.28);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 20px 60px;
+  }
+
+  .wrap { max-width: 1240px; margin: 0 auto; }
+
+  /* ---------- 头部 ---------- */
+  header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 22px;
+  }
+  .logo {
+    width: 48px; height: 48px; border-radius: 12px; flex: none;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 27px; font-weight: 700; line-height: 1;
+    font-family: inherit; user-select: none;
+  }
+  header h1 { font-size: 22px; font-weight: 700; letter-spacing: .5px; }
+  header p { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+  .layout {
+    display: grid; grid-template-columns: 1fr 380px; gap: 20px; align-items: start;
+  }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .card h2 {
+    font-size: 15px; font-weight: 600; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card h2::before {
+    content: ""; width: 4px; height: 16px; border-radius: 2px;
+    background: var(--accent);
+  }
+
+  /* ---------- 拖拽区 ---------- */
+  .drop {
+    border: 2px dashed var(--line); border-radius: 14px;
+    padding: 34px 16px; text-align: center; cursor: pointer;
+    transition: all .18s ease; background: rgba(255,255,255,.015);
+  }
+  .drop:hover { border-color: var(--accent); background: rgba(74,123,216,.07); }
+  .drop.drag { border-color: var(--accent); background: rgba(74,123,216,.10); }
+  .drop .icon { font-size: 34px; line-height: 1; margin-bottom: 8px; }
+  .drop .t1 { font-weight: 600; font-size: 15px; }
+  .drop .t2 { color: var(--muted); font-size: 12px; margin-top: 5px; }
+
+  /* ---------- 文件列表 ---------- */
+  .files { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .file {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 10px;
+  }
+  .file img { width: 42px; height: 42px; object-fit: cover; border-radius: 8px; flex: none; background:#000; }
+  .file .info { min-width: 0; flex: 1; }
+  .file .nm { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file .sz { font-size: 11px; color: var(--muted); }
+  .file .rm {
+    border: none; background: none; color: var(--muted); cursor: pointer;
+    font-size: 17px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+  }
+  .file .rm:hover { color: var(--err); background: rgba(248,113,113,.12); }
+
+  /* ---------- 按钮 ---------- */
+  .btn {
+    border: none; border-radius: 10px; cursor: pointer;
+    font-size: 14px; font-weight: 600; padding: 12px 18px;
+    transition: all .15s ease; font-family: inherit;
+  }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-primary {
+    width: 100%; margin-top: 14px; color: #fff;
+    background: var(--accent);
+  }
+  .btn-primary:hover:not(:disabled) { background: #3f6cbf; }
+  .btn-primary:active:not(:disabled) { background: #3860ab; }
+  .btn-ghost {
+    background: var(--card2); color: var(--text); border: 1px solid var(--line); padding: 7px 12px; font-size: 12px;
+  }
+  .btn-ghost:hover { border-color: var(--accent); }
+
+  /* ---------- 状态 ---------- */
+  .status { margin-top: 14px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 10px; min-height: 22px; }
+  .spinner {
+    width: 16px; height: 16px; border-radius: 50%; flex: none;
+    border: 2px solid var(--line); border-top-color: var(--accent);
+    animation: spin .8s linear infinite; display: none;
+  }
+  .status.busy .spinner { display: block; }
+  .status.busy { color: var(--text); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status.error { color: var(--err); }
+  .status.ok { color: var(--ok); }
+
+  /* ---------- 参数表单 ---------- */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  .field .hint { font-size: 11px; color: var(--muted); opacity: .8; margin-top: 4px; }
+  select, input[type=text], input[type=number] {
+    width: 100%; padding: 9px 11px; font-size: 13.5px;
+    background: var(--bg2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px; outline: none; font-family: inherit;
+    transition: border-color .15s ease;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+  .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .switch {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--card2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; font-size: 12.5px; cursor: pointer; user-select: none;
+    transition: border-color .15s ease;
+  }
+  .switch:hover { border-color: var(--accent); }
+  .switch input { display: none; }
+  .switch .dot {
+    width: 34px; height: 20px; border-radius: 20px; flex: none; position: relative;
+    background: var(--line); transition: background .18s ease;
+  }
+  .switch .dot::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: left .18s ease;
+  }
+  .switch input:checked + .dot { background: var(--accent); }
+  .switch input:checked + .dot::after { left: 16px; }
+
+  /* ---------- 结果 ---------- */
+  .results { margin-top: 22px; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .res {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow);
+  }
+  .res .thumb {
+    background: var(--bg2);
+    display: flex; align-items: center; justify-content: center; padding: 8px; min-height: 150px;
+  }
+  .res .thumb img { max-width: 100%; max-height: 260px; border-radius: 6px; }
+  .res .body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .res .nm { font-size: 13.5px; font-weight: 600; word-break: break-all; }
+  .res .meta { font-size: 11.5px; color: var(--muted); }
+  .res .links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  .res .links a {
+    font-size: 11.5px; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px;
+  }
+  .res .links a:hover { border-color: var(--accent); background: rgba(74,123,216,.08); }
+  .logbox {
+    margin-top: 12px; background: #0b0d12; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; font-family: Consolas, monospace; font-size: 11.5px;
+    white-space: pre-wrap; color: var(--muted); max-height: 220px; overflow: auto; display: none;
+  }
+
+  .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 30px 10px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 30px; opacity: .7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">D</div>
+    <div>
+      <h1>拼豆图纸转换器</h1>
+      <p>把你的图片变成带色号的拼豆图纸</p>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- 左：上传 + 转换 + 结果 -->
+    <div>
+      <div class="card">
+        <h2>选择图片</h2>
+        <div class="drop" id="drop">
+          <div class="t1">拖拽图片到这里，或点击选择</div>
+          <div class="t2">支持 PNG / JPG / WebP / GIF 等格式，可一次多张</div>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+        <div class="files" id="fileList"></div>
+        <button class="btn btn-primary" id="convertBtn" disabled>开始转换</button>
+        <div class="status" id="status"></div>
+      </div>
+
+      <div id="results"></div>
+    </div>
+
+    <!-- 右：参数 -->
+    <div class="card" style="position: sticky; top: 20px;">
+      <h2>转换参数</h2>
+
+      <div class="field">
+        <label>品牌 / 色板</label>
+        <select id="palette">
+          <option value="mard">mard · MARD 291色（国内拼豆）</option>
+          <option value="perler">perler · Perler 95色</option>
+          <option value="artkal">artkal · Artkal 30色</option>
+          <option value="hama">hama · Hama 28色</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>色号标注</label>
+        <select id="label">
+          <option value="brand">品牌色号（推荐）</option>
+          <option value="letter">字母 A、B、C…</option>
+          <option value="number">数字 1、2、3…</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>最多用色（相似颜色自动合并）</label>
+        <select id="maxColors">
+          <option value="0">不限</option>
+          <option value="8">8 · 极简</option>
+          <option value="12">12 · 精简</option>
+          <option value="16">16 · 适中</option>
+          <option value="24" selected>24 · 丰富（推荐）</option>
+          <option value="36">36 · 细腻</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>每格大小（px）</label>
+        <div class="row2">
+          <select id="cell">
+            <option>20</option><option>24</option><option selected>28</option>
+            <option>30</option><option>36</option>
+          </select>
+          <input type="number" id="size" value="200" min="20" step="10" title="最大边长上限">
+        </div>
+        <div class="hint">最大边长(格)</div>
+      </div>
+
+      <div class="field">
+        <label>底板尺寸（0 = 自动）</label>
+        <div class="row2">
+          <input type="number" id="width" value="0" min="0" placeholder="宽(格)">
+          <input type="number" id="height" value="0" min="0" placeholder="高(格)">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>图纸标题</label>
+        <input type="text" id="title" placeholder="留空 = 无标题">
+      </div>
+
+      <div class="toggles">
+        <label class="switch"><span>显示坐标</span><input type="checkbox" id="coords" checked><span class="dot"></span></label>
+        <label class="switch"><span>网格线</span><input type="checkbox" id="grid" checked><span class="dot"></span></label>
+        <label class="switch"><span>立体豆感</span><input type="checkbox" id="bead"><span class="dot"></span></label>
+        <label class="switch"><span>抖动处理</span><input type="checkbox" id="dither"><span class="dot"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <footer>由 webui.py 本地服务驱动 所有转换都在本机完成</footer>
+</div>
+
+<script>
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+const convertBtn = document.getElementById('convertBtn');
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+
+let files = [];
+
+// ---- 文件选择 ----
+function addFiles(list) {
+  for (const f of list) {
+    if (files.some(x => x.name === f.name && x.size === f.size)) continue;
+    files.push(f);
+  }
+  renderFiles();
+}
+function renderFiles() {
+  fileList.innerHTML = '';
+  files.forEach((f, idx) => {
+    const div = document.createElement('div');
+    div.className = 'file';
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(f);
+    const info = document.createElement('div');
+    info.className = 'info';
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = f.name;
+    const sz = document.createElement('div');
+    sz.className = 'sz';
+    sz.textContent = (f.size / 1024).toFixed(1) + ' KB';
+    info.append(nm, sz);
+    const rm = document.createElement('button');
+    rm.className = 'rm';
+    rm.textContent = '✕';
+    rm.title = '移除';
+    rm.onclick = () => { files.splice(idx, 1); renderFiles(); };
+    div.append(img, info, rm);
+    fileList.appendChild(div);
+  });
+  convertBtn.disabled = files.length === 0;
+}
+
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag'); addFiles(e.dataTransfer.files); });
+drop.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
+
+// ---- 参数 ----
+function collectParams() {
+  return {
+    palette: document.getElementById('palette').value,
+    label: document.getElementById('label').value,
+    max_colors: document.getElementById('maxColors').value,
+    cell: document.getElementById('cell').value,
+    size: document.getElementById('size').value || 200,
+    width: document.getElementById('width').value || 0,
+    height: document.getElementById('height').value || 0,
+    title: document.getElementById('title').value.trim(),
+    coords: document.getElementById('coords').checked ? '1' : '0',
+    grid: document.getElementById('grid').checked ? '1' : '0',
+    bead: document.getElementById('bead').checked ? '1' : '0',
+    dither: document.getElementById('dither').checked ? '1' : '0',
+  };
+}
+
+// ---- 转换 ----
+async function convert() {
+  if (!files.length) return;
+  setStatus('正在转换…', 'busy');
+  convertBtn.disabled = true;
+  resultsEl.innerHTML = '<div class="empty">正在生成图纸，请稍候…</div>';
+
+  const form = new FormData();
+  files.forEach(f => form.append('images', f, f.name));
+  const p = collectParams();
+  for (const k in p) form.append(k, p[k]);
+
+  try {
+    const res = await fetch('/api/convert', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || '转换失败');
+    renderResults(data);
+    const n = data.results.length, e = data.errors.length;
+    setStatus(e ? `完成 ${n} 张，失败 ${e} 张` : `成功转换 ${n} 张图片`, 'ok');
+  } catch (err) {
+    setStatus('出错：' + err.message, 'error');
+    resultsEl.innerHTML = '';
+  } finally {
+    convertBtn.disabled = files.length === 0;
+  }
+}
+convertBtn.addEventListener('click', convert);
+
+function renderResults(data) {
+  resultsEl.innerHTML = '';
+  const title = document.createElement('h2');
+  title.style.cssText = 'margin: 8px 0 2px; font-size:15px; display:flex; align-items:center; gap:8px; color:var(--text)';
+  title.innerHTML = '<span style="width:4px;height:16px;border-radius:2px;background:var(--accent);display:inline-block"></span> 转换结果';
+  resultsEl.appendChild(title);
+
+  const grid = document.createElement('div');
+  grid.className = 'results';
+
+  data.results.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'res';
+
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb';
+    if (r.outputs.pattern) {
+      const img = document.createElement('img');
+      img.src = r.outputs.pattern;
+      img.loading = 'lazy';
+      img.onclick = () => window.open(r.outputs.pattern, '_blank');
+      img.style.cursor = 'zoom-in';
+      img.title = '点击查看大图';
+      thumb.appendChild(img);
+    } else {
+      thumb.textContent = '（未生成图纸）';
+      thumb.style.color = 'var(--muted)';
+      thumb.style.fontSize = '12px';
+    }
+
+    const body = document.createElement('div');
+    body.className = 'body';
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = r.input;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = r.size ? '图纸尺寸 ' + r.size : '';
+    const links = document.createElement('div');
+    links.className = 'links';
+    const mk = (href, text) => {
+      const a = document.createElement('a');
+      a.href = href; a.target = '_blank'; a.textContent = text;
+      links.appendChild(a);
+    };
+    if (r.outputs.pattern) mk(r.outputs.pattern, '🖼️ 图纸');
+    if (r.outputs.colors_csv) mk(r.outputs.colors_csv, '📄 颜色清单');
+    if (r.outputs.grid_csv) mk(r.outputs.grid_csv, '📄 网格表');
+    if (r.outputs.dir_abs) {
+      const o = document.createElement('a');
+      o.href = 'javascript:void(0)';
+      o.textContent = '📁 打开文件夹';
+      o.onclick = async (ev) => {
+        ev.preventDefault();
+        try {
+          const resp = await fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dir: r.outputs.dir_abs }) });
+          const d = await resp.json();
+          if (!resp.ok || !d.ok) setStatus('打开文件夹失败：' + (d.error || '未知错误'), 'error');
+          else setStatus('已打开输出文件夹', 'ok');
+        } catch (e) {
+          setStatus('打开文件夹失败：' + e.message, 'error');
+        }
+      };
+      links.appendChild(o);
+    }
+    body.append(nm, meta, links);
+
+    if (r.log) {
+      const log = document.createElement('details');
+      log.className = 'logbox';
+      log.style.display = 'block';
+      const s = document.createElement('summary');
+      s.textContent = '查看日志';
+      s.style.cursor = 'pointer'; s.style.fontFamily = 'inherit'; s.style.fontSize = '11.5px';
+      const pre = document.createElement('div');
+      pre.textContent = r.log;
+      log.append(s, pre);
+      body.appendChild(log);
+    }
+
+    card.append(thumb, body);
+    grid.appendChild(card);
+  });
+
+  data.errors.forEach(e => {
+    const card = document.createElement('div');
+    card.className = 'res';
+    card.style.borderColor = 'var(--err)';
+    const body = document.createElement('div');
+    body.className = 'body';
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = e.input;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.style.color = 'var(--err)';
+    meta.textContent = e.error;
+    body.append(nm, meta);
+    card.appendChild(body);
+    grid.appendChild(card);
+  });
+
+  resultsEl.appendChild(grid);
+}
+
+function setStatus(text, cls) {
+  statusEl.className = 'status' + (cls ? ' ' + cls : '');
+  statusEl.innerHTML = cls === 'busy' ? '<span class="spinner"></span>' + text : text;
+}
+</script>
+</body>
+</html>
