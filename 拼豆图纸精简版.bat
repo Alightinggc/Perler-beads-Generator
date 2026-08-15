@@ -2,6 +2,16 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
+REM ---- 优先使用本目录虚拟环境中的 Python（没装过环境时退回系统 Python）----
+set "PY=python"
+if exist "%~dp0.venv\Scripts\python.exe" set "PY=%~dp0.venv\Scripts\python.exe"
+"%PY%" --version >nul 2>&1
+if errorlevel 1 (
+    echo 未检测到 Python 运行环境，请先双击运行「一键安装环境.bat」。
+    pause
+    exit /b 1
+)
+
 REM ================== 在这里修改默认参数 ==================
 REM 色板: perler(95色) / artkal(30色) / hama(28色) / mard(MARD 291色)
 set PALETTE=mard
@@ -23,7 +33,7 @@ echo ========================================
 echo  拼豆图纸转换器 - 正在处理: %~nx1
 echo ========================================
 echo.
-python main.py "%~1" --palette %PALETTE% --label-style %LABEL% --max-colors %MAXCOLORS% --cell %CELL% --out-dir "output\%~n1_%PALETTE%_%MAXCOLORS%" %EXTRA% --no-colors-csv --no-grid-csv
+"%PY%" main.py "%~1" --palette %PALETTE% --label-style %LABEL% --max-colors %MAXCOLORS% --cell %CELL% --out-dir "output\%~n1_%PALETTE%_%MAXCOLORS%" %EXTRA% --no-colors-csv --no-grid-csv
 shift
 goto loop
 
