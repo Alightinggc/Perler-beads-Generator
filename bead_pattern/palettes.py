@@ -220,8 +220,14 @@ def load_mard() -> Palette:
     import json
     import os
     import re
+    import sys
 
-    path = os.path.join(os.path.dirname(__file__), _MARD_DATA)
+    if getattr(sys, "frozen", False):
+        # PyInstaller 打包后数据文件被解压到 _MEIPASS 下
+        base = os.path.join(getattr(sys, "_MEIPASS", ""), "bead_pattern")
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(base, _MARD_DATA)
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 

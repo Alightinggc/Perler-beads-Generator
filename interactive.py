@@ -11,7 +11,11 @@ import shlex
 import subprocess
 import sys
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+_FROZEN = getattr(sys, "frozen", False)
+if _FROZEN:
+    BASE = os.path.dirname(sys.executable)          # 打包成 exe 后，工作目录用 exe 所在目录
+else:
+    BASE = os.path.dirname(os.path.abspath(__file__))
 MAIN = os.path.join(BASE, "main.py")
 
 # 固定工作目录为脚本所在目录，确保相对路径(如 output/)始终正确
@@ -81,12 +85,20 @@ def run_converter(files=None, pick=False, demo=False):
     else:
         targets = list(files) if files else []
     for t in targets:
-        cmd = [sys.executable, MAIN, t] + build_args()
-        print()
-        print("执行: python main.py %s" % " ".join(cmd[2:]))
-        print("-" * 60)
-        subprocess.run(cmd)
-        print("-" * 60)
+        if _FROZEN:
+            import main as main_mod
+            print()
+            print("执行转换 ...")
+            print("-" * 60)
+            main_mod.main([t] + build_args())
+            print("-" * 60)
+        else:
+            cmd = [sys.executable, MAIN, t] + build_args()
+            print()
+            print("执行: python main.py %s" % " ".join(cmd[2:]))
+            print("-" * 60)
+            subprocess.run(cmd)
+            print("-" * 60)
     input("按回车键继续...")
 
 

@@ -23,9 +23,17 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-WEB_DIR = os.path.join(BASE, "web")
-OUT_DIR = os.path.join(BASE, "output")
+_FROZEN = getattr(sys, "frozen", False)
+if _FROZEN:
+    APP_DIR = os.path.dirname(sys.executable)              # 输出/工作目录 = exe 所在目录
+    BUNDLE_DIR = getattr(sys, "_MEIPASS", APP_DIR)         # 打包数据(web/index.html)
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    BUNDLE_DIR = APP_DIR
+
+BASE = APP_DIR
+WEB_DIR = os.path.join(BUNDLE_DIR, "web")
+OUT_DIR = os.path.join(APP_DIR, "output")
 UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "bead_pattern_web_uploads")
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765

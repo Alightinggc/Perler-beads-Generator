@@ -61,8 +61,12 @@ DEFAULT_MAX_BLOCK = 64  # 自动检测时的最大候选块大小
 COLOR_TOL = 35          # “两种颜色不同”判定阈值：RGB 三通道差之和超过它视为不同
 ERR_TOL = 0.03          # 重建不一致比例低于该值，认为块大小正确
 ANALYSIS_MAX_SIDE = 2048  # 检测用图片的最大边长（超大图先缩到该尺寸再检测，提速）
-# 默认输出目录：脚本所在文件夹下的 output_
-DEFAULT_OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output_")
+# 默认输出目录：脚本所在文件夹下的 output_（打包成 exe 后为 exe 所在目录）
+if getattr(sys, "frozen", False):
+    _APP_DIR = os.path.dirname(sys.executable)
+else:
+    _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_OUT_DIR = os.path.join(_APP_DIR, "output_")
 
 
 # ---------------------------------------------------------------------------

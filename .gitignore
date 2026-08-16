@@ -10,3 +10,8 @@ output/*
 
 output_/*
 !output_/.gitkeep
+
+# PyInstaller 打包产物
+build/
+dist/
+packaging/*.spec
