@@ -1,36 +1,36 @@
 @echo off
-chcp 65001 >nul
+chcp 936 >nul
 cd /d "%~dp0"
 
-REM ---- ä¼˜å…ˆä½¿ç”¨æœ¬ç›®å½•è™šæ‹ŸçŽ¯å¢ƒä¸­çš„ Pythonï¼ˆæ²¡è£…è¿‡çŽ¯å¢ƒæ—¶é€€å›žç³»ç»Ÿ Pythonï¼‰----
+REM ---- ÓÅÏÈÊ¹ÓÃ±¾Ä¿Â¼ÐéÄâ»·¾³ÖÐµÄ Python£¨Ã»×°¹ý»·¾³Ê±ÍË»ØÏµÍ³ Python£©----
 set "PY=python"
 if exist "%~dp0.venv\Scripts\python.exe" set "PY=%~dp0.venv\Scripts\python.exe"
 "%PY%" --version >nul 2>&1
 if errorlevel 1 (
-    echo æœªæ£€æµ‹åˆ° Python è¿è¡ŒçŽ¯å¢ƒï¼Œè¯·å…ˆåŒå‡»è¿è¡Œã€Œä¸€é”®å®‰è£…çŽ¯å¢ƒ.batã€ã€‚
+    echo Î´¼ì²âµ½ Python ÔËÐÐ»·¾³£¬ÇëÏÈË«»÷ÔËÐÐ¡¸Ò»¼ü°²×°»·¾³.bat¡¹¡£
     pause
     exit /b 1
 )
 
-REM ================== åœ¨è¿™é‡Œä¿®æ”¹é»˜è®¤å‚æ•° ==================
-REM è‰²æ¿: perler(95è‰²) / artkal(30è‰²) / hama(28è‰²) / mard(MARD 291è‰²)
+REM ================== ÔÚÕâÀïÐÞ¸ÄÄ¬ÈÏ²ÎÊý ==================
+REM É«°å: perler(95É«) / artkal(30É«) / hama(28É«) / mard(MARD 291É«)
 set PALETTE=mard
-REM è‰²å·æ ‡æ³¨: brand(å“ç‰Œè‰²å·ï¼Œå¦‚H5/F11) / letter(A,B,C) / number(1,2,3)
+REM É«ºÅ±ê×¢: brand(Æ·ÅÆÉ«ºÅ£¬ÈçH5/F11) / letter(A,B,C) / number(1,2,3)
 set LABEL=brand
-REM æœ€å¤šç”¨è‰²ï¼ˆ0=ä¸é™ï¼‰
+REM ×î¶àÓÃÉ«£¨0=²»ÏÞ£©
 set MAXCOLORS=24
-REM æ¯æ ¼åƒç´ å¤§å°ï¼ˆè¶Šå¤§è‰²å·è¶Šæ¸…æ™°ï¼Œbrand å»ºè®® >=28ï¼‰
+REM Ã¿¸ñÏñËØ´óÐ¡£¨Ô½´óÉ«ºÅÔ½ÇåÎú£¬brand ½¨Òé >=28£©
 set CELL=30
-REM é¢å¤–å‚æ•°ï¼Œå¦‚ --coords(åæ ‡) / --title "æˆ‘çš„å›¾çº¸"
+REM ¶îÍâ²ÎÊý£¬Èç --coords(×ø±ê) / --title "ÎÒµÄÍ¼Ö½"
 set EXTRA=--coords
-REM æŠ–åŠ¨å¤„ç†é»˜è®¤å…³é—­ï¼ˆmain.py é»˜è®¤å…³ï¼‰ï¼›æƒ³å¼€å¯å°±åœ¨å‘½ä»¤é‡ŒåŠ  --dither
+REM ¶¶¶¯´¦ÀíÄ¬ÈÏ¹Ø±Õ£¨main.py Ä¬ÈÏ¹Ø£©£»Ïë¿ªÆô¾ÍÔÚÃüÁîÀï¼Ó --dither
 REM ========================================================
 
 :loop
 if "%~1"=="" goto done
 echo.
 echo ========================================
-echo  æ‹¼è±†å›¾çº¸è½¬æ¢å™¨ - æ­£åœ¨å¤„ç†: %~nx1
+echo  Æ´¶¹Í¼Ö½×ª»»Æ÷ - ÕýÔÚ´¦Àí: %~nx1
 echo ========================================
 echo.
 "%PY%" main.py "%~1" --palette %PALETTE% --label-style %LABEL% --max-colors %MAXCOLORS% --cell %CELL% --out-dir "output\%~n1_%PALETTE%_%MAXCOLORS%" %EXTRA% --no-colors-csv --no-grid-csv
@@ -39,6 +39,6 @@ goto loop
 
 :done
 echo.
-echo å…¨éƒ¨å®Œæˆï¼ç»“æžœå·²ä¿å­˜åˆ° output ä¸‹å¯¹åº”çš„æ–‡ä»¶åå­æ–‡ä»¶å¤¹ã€‚
-echo æŒ‰ä»»æ„é”®å…³é—­...
+echo È«²¿Íê³É£¡½á¹ûÒÑ±£´æµ½ output ÏÂ¶ÔÓ¦µÄÎÄ¼þÃû×ÓÎÄ¼þ¼Ð¡£
+echo °´ÈÎÒâ¼ü¹Ø±Õ...
 pause >nul

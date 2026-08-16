@@ -1,13 +1,13 @@
 @echo off
-chcp 65001 >nul
+chcp 936 >nul
 cd /d "%~dp0"
 
-REM ---- 优先使用本目录虚拟环境中的 Python（没装过环境时退回系统 Python）----
+REM ---- ����ʹ�ñ�Ŀ¼���⻷���е� Python��ûװ������ʱ�˻�ϵͳ Python��----
 set "PY=python"
 if exist "%~dp0.venv\Scripts\python.exe" set "PY=%~dp0.venv\Scripts\python.exe"
 "%PY%" --version >nul 2>&1
 if errorlevel 1 (
-    echo 未检测到 Python 运行环境，请先双击运行「一键安装环境.bat」。
+    echo δ��⵽ Python ���л���������˫�����С�һ����װ����.bat����
     pause
     exit /b 1
 )
