@@ -485,10 +485,35 @@ def _mode_of_blocks(b: np.ndarray, quant_bits: int = 3) -> np.ndarray:
     same = np.all(b == first[..., None, :], axis=(2, 3))       # (R, C)
     res[same] = first[same].astype(np.uint8)
 
-    # 慢路径：混合块逐块求主色簇
-    ys, xs = np.nonzero(~same)
-    for i, j in zip(ys.tolist(), xs.tolist()):
-        res[i, j] = _mode_of_block(b[i, j], quant_bits)
+    # 慢路径：混合块向量化求主色簇（避免逐块 Python 循环，超大图/照片也快）
+    mask = ~same
+    if mask.any():
+        sub = b[mask]                                          # (M, N, 4)
+        M = sub.shape[0]
+        rgb = sub[..., :3].astype(np.int64)                    # (M, N, 3)
+        alpha = sub[..., 3]                                    # (M, N)
+        shift = 8 - quant_bits
+        q = (rgb >> shift) & ((1 << quant_bits) - 1)
+        enc = (q[..., 0] << (2 * quant_bits)) | (q[..., 1] << quant_bits) | q[..., 2]
+        opaque = alpha >= 128
+        enc = np.where(opaque, enc, -1)                        # (M, N)
+        n_bins = 1 << (3 * quant_bits)
+        # -1（透明）映射到独立的哨兵 bin，避免污染 bin 0
+        enc_idx = np.where(enc >= 0, enc, n_bins)
+        hist = np.zeros((M, n_bins + 1), dtype=np.int32)
+        rows = np.repeat(np.arange(M), N)
+        np.add.at(hist, (rows, enc_idx.reshape(-1)), 1)
+        hist_valid = hist[:, :n_bins]
+        mode_bin = np.argmax(hist_valid, axis=1)               # (M,)
+        match = enc == mode_bin[:, None]                       # (M, N)
+        match_sum = np.maximum(match.sum(axis=1), 1)           # (M,)
+        rgb_sum = (rgb * match[..., None]).sum(axis=1)         # (M, 3)
+        avg = np.rint(rgb_sum / match_sum[..., None]).astype(np.uint8)
+        out = np.empty((M, 4), dtype=np.uint8)
+        out[:, :3] = avg
+        out[:, 3] = 255
+        out[(opaque.sum(axis=1) == 0)] = 0                     # 全透明块
+        res[mask] = out
     return res
 
 
@@ -632,6 +657,180 @@ def parse_block(s: str) -> tuple[int, int]:
 
 
 # ---------------------------------------------------------------------------
+# 2b. 鲁棒自动块大小检测（模式重建误差 + 谷值判定）
+# ---------------------------------------------------------------------------
+
+def _mode_mismatch(img: Image.Image, kx: int, ky: int) -> float:
+    """模式重建误差：把图按 kx×ky 块取主色缩小，再放大回原尺寸，
+    返回不一致像素比例。块大小正确时趋近 0；照片/非像素画为单调上升曲线。"""
+    W, H = img.size
+    tw, th = max(1, round(W / kx)), max(1, round(H / ky))
+    if (tw, th) == (W, H):
+        return 0.0
+    small = block_mode_downscale(img, kx, ky, tw, th)
+    return 1.0 - consistency_ratio(img, small)
+
+
+def _boundary_period(score: np.ndarray, max_block: int,
+                     thresh: float = 0.5) -> tuple[int, float]:
+    """从边界分数曲线里找最细的周期（= 一个逻辑像素占多大）。
+
+    边界分数 s[i] = 第 i 列/行位置上有颜色边界的垂直/水平线比例。像素画的
+    边界按“块大小”周期性重复，因此 s[i] 与 s[i+块大小] 高度相关。对每个
+    候选周期 L 算自相关，第一个相关度超过 thresh 的 L 就是最细周期。
+    抗边缘模糊：模糊只发生在块边界处，不会改变边界出现的“周期”。
+    找不到明显周期时返回相关度最高的 L 作为参考。
+    """
+    n = len(score)
+    if n < 8:
+        return 1, 0.0
+    s = score.astype(np.float64)
+    s = s - s.mean()
+    norm = np.sqrt(np.dot(s, s))
+    if norm < 1e-9:
+        return 1, 0.0
+    best, best_c = 1, -1.0
+    for L in range(2, min(max_block, n // 2) + 1):
+        a = s[:-L]
+        b = s[L:]
+        c = float(np.dot(a, b) / (np.sqrt(np.dot(a, a)) * np.sqrt(np.dot(b, b)) + 1e-12))
+        if c > best_c:
+            best_c, best = c, L
+        if c >= thresh:
+            return L, c
+    return best, best_c
+
+
+def _largest_valley(mm: dict[int, float], err_tol: float,
+                    valley_factor: float) -> int:
+    """在模式重建误差曲线里找“最大谷值”（误差明显低于两侧的候选块）。"""
+    best = 1
+    for k in sorted(mm):
+        if mm[k] > err_tol:
+            continue
+        if k == 2:
+            # 照片/单像素图的 mm(2) 也常是曲线最低点，但不会接近 0；
+            # 只有真正干净（近似无损）才允许 k=2。
+            left_ok = mm[k] < 0.015
+        else:
+            left_ok = (k - 1 not in mm) or (mm[k] <= valley_factor * mm[k - 1])
+        right_ok = (k + 1 not in mm) or (mm[k] <= valley_factor * mm[k + 1])
+        if left_ok and right_ok:
+            best = max(best, k)
+    return best
+
+
+def detect_block_auto(img: Image.Image,
+                      max_block: int = DEFAULT_MAX_BLOCK) -> tuple[int, int, int, int, dict]:
+    """鲁棒自动检测“每个像素格占多大”，返回 (kx, ky, dx, dy, 诊断信息)。
+
+    综合两个互相补充的信号：
+    1. 边界周期（最细网格间距）：对干净的、尤其带边缘模糊的像素画非常准；
+       但稀疏图（内容少）可能把周期估成真实块的整数倍。
+    2. 模式重建误差谷值：对稀疏/干净的像素画很准；但边缘模糊会让误差曲线
+       单调上升、找不到谷值。
+
+    判定：
+    - 边界周期可靠（相关度高）且在该周期处模式重建误差不高 → 用该周期；
+    - 否则退回到模式重建误差的最大谷值；
+    - 两者都没有 → k=1（照片/截图/单像素图，保持原尺寸）。
+    大图先在 ANALYSIS_MAX_SIDE 内扫描，再换算回原图并在原图上精修。
+    """
+    W, H = img.size
+    a = analysis_image(img)
+    aW, aH = a.size
+
+    # 1) 边界周期（最细网格间距）
+    col_s, row_s = _boundary_scores(a, COLOR_TOL)
+    P_col, corr_col = _boundary_period(col_s, max_block)
+    P_row, corr_row = _boundary_period(row_s, max_block)
+    corr_max = max(corr_col, corr_row)
+    periods = [p for p in (P_col, P_row) if p >= 2]
+    P = min(periods) if periods else 1
+
+    info: dict = {
+        "analysis_size": (aW, aH),
+        "P_col": P_col, "P_row": P_row,
+        "corr_col": round(corr_col, 3), "corr_row": round(corr_row, 3),
+        "period": P,
+    }
+
+    # 明显无周期 → 照片/截图，直接保持原尺寸（避免在照片上做慢速扫描）
+    if corr_max < 0.35:
+        info["reason"] = "no_period"
+        return 1, 1, 0, 0, info
+
+    # 2) 模式重建误差曲线（带像素格起始偏移）
+    dx_edges, dy_edges = _edge_maps(a, COLOR_TOL)
+    mm: dict[int, float] = {}
+    offsets: dict[int, tuple[int, int]] = {}
+    lim = min(max_block, min(aW, aH) // 2)
+    for k in range(2, lim + 1):
+        dx = _offset_from_edges(dx_edges, k)
+        dy = _offset_from_edges(dy_edges.T, k)
+        sub = a.crop((dx, dy, aW, aH)) if (dx or dy) else a
+        mm[k] = _mode_mismatch(sub, k, k)
+        offsets[k] = (dx, dy)
+
+    # 3) 判定
+    #    a) 边界周期可靠（两轴都呈周期、且该周期处重建误差不高）→ 以周期为准；
+    #    b) 周期不可靠（稀疏图 / 截图）→ 退回到“严格谷值”。
+    min_corr = min(corr_col, corr_row)
+    colors = unique_color_count(a)
+    b_period = 1
+    # 周期可靠 + 该周期处重建误差不高才采用；误差很低(<=0.08)说明块内确实干净，
+    # 否则还要求颜色数不多（照片/截图虽有周期性但颜色极多，据此排除）。
+    if P >= 2 and min_corr >= 0.50:
+        mmP = mm.get(P, 1.0)
+        if mmP <= 0.15 and (mmP <= 0.08 or colors <= 8000):
+            b_period = P
+    info["colors"] = colors
+    b_valley = _largest_valley(mm, err_tol=0.10, valley_factor=0.72)
+
+    best = b_period if b_period >= 2 else b_valley
+    info["min_corr"] = round(min_corr, 3)
+    info["mm"] = mm
+    info["offsets"] = offsets
+    info["best_analysis"] = best
+    info["b_valley"] = b_valley
+    info["b_period"] = b_period
+
+    kx = ky = 1
+    dx = dy = 0
+    if best > 1:
+        if (aW, aH) == (W, H):
+            kx = ky = best
+        else:
+            # 大图：把分析图上的块大小换算回原图，并在原图小范围精修。
+            # 换算存在取整误差（分析图缩放的两次舍入），按“离估算值最近且
+            # 重建误差可接受”的原则选，避免在窗口里一味取更大 k 造成过度压缩。
+            k_est = max(2, round(best * W / aW))
+            fdx_edges, fdy_edges = _edge_maps(img, COLOR_TOL)
+            cands = sorted(
+                set(range(max(2, k_est - 3), min(k_est + 4, min(W, H) // 2 + 1))),
+                key=lambda k: abs(k - k_est),
+            )
+            best_full = 1
+            for k in cands:
+                fdx = _offset_from_edges(fdx_edges, k)
+                fdy = _offset_from_edges(fdy_edges.T, k)
+                sub = img.crop((fdx, fdy, W, H)) if (fdx or fdy) else img
+                mk = _mode_mismatch(sub, k, k)
+                if mk <= 0.15:
+                    best_full = k
+                    break
+            if best_full >= 2:
+                kx = ky = best_full
+        # 原图上估算像素格起始偏移（用于裁齐后再缩小）
+        fdx_edges, fdy_edges = _edge_maps(img, COLOR_TOL)
+        dx = _offset_from_edges(fdx_edges, kx)
+        dy = _offset_from_edges(fdy_edges.T, ky)
+        info["dx"] = dx
+        info["dy"] = dy
+    return kx, ky, dx, dy, info
+
+
+# ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
 
@@ -646,59 +845,36 @@ def process_file(in_path: str, args: argparse.Namespace) -> tuple[str, dict] | N
     kx = ky = 0
     det_info = None
 
-    # —— 自动检测主路径：网格线重建 ——
-    # 直接定位每个逻辑像素的边界（处理非整数块大小、相邻同色合并、JPEG 噪点）
-    if not args.block and not args.scale:
-        grid = detect_pixel_grid(img, max_block=args.max_block)
-        if grid is not None:
-            small = grid_mode_downscale(img, grid["col_lines"], grid["row_lines"])
-            tw, th = small.size
-            det_info = grid
-            if args.quantize and args.quantize > 0 and (tw, th) != (W, H):
-                q = small.quantize(args.quantize, method=Image.Quantize.FASTOCTREE) \
-                    if "A" in small.getbands() \
-                    else small.quantize(args.quantize, method=Image.Quantize.MEDIANCUT)
-                small = q.convert("RGBA")
-            rep = _report_info(in_path, img, raw_W, raw_H, kx, ky, tw, th, small, "", args, det_info)
-            if args.info:
-                return None, rep
-            out_dir = args.out_dir or os.path.dirname(os.path.abspath(in_path))
-            os.makedirs(out_dir, exist_ok=True)
-            stem = os.path.splitext(os.path.basename(in_path))[0]
-            out_path = unique_path(os.path.join(out_dir, f"{stem}_{tw}x{th}.png"))
-            save_image(small, out_path)
-            return out_path, rep
-
-    # —— 其余路径：手动 block / scale / 网格检测失败回退到块大小法 ——
+    # —— 自动检测主路径：模式重建误差 + 谷值判定 ——
+    # 干净的放大像素画在“真实块大小”处出现尖锐谷值；照片 / 截图 / 单像素风格图
+    # 的误差曲线单调上升、没有谷值，因而判定为 k=1（保持原尺寸），
+    # 从根本上避免“过度压缩导致比例失常”。
     use_mode = False  # auto 模式下是否需要用块主色聚合去噪
-    if args.block:
+    if not args.block and not args.scale:
+        kx, ky, dx, dy, det_info = detect_block_auto(img, max_block=args.max_block)
+        if kx > 1 and ky > 1:
+            use_mode = True
+            if dx or dy:
+                # 裁掉起始偏移，让像素格与网格对齐后再缩小
+                img = img.crop((dx, dy, W, H))
+                W, H = img.size
+            tw, th = max(1, round(W / kx)), max(1, round(H / ky))
+        else:
+            kx = ky = 1
+            tw, th = W, H
+    elif args.block:
         kx, ky = parse_block(args.block)
         # 手动指定块大小，但也自动对齐像素格起始偏移
         img, dx, dy = align_image(img, kx, ky)
         W, H = img.size
         det_info = {"manual": True, "dx": dx, "dy": dy}
         tw, th = max(1, round(W / kx)), max(1, round(H / ky))
-    elif args.scale:
+    else:  # args.scale
         tw, th = max(1, round(W * args.scale)), max(1, round(H * args.scale))
-    else:
-        k, det_info = detect_block_size(img, max_block=args.max_block)
-        kx = ky = k
-        if k > 1:
-            dx, dy = det_info.get("dx", 0), det_info.get("dy", 0)
-            if dx or dy:
-                # 裁掉起始偏移，让像素格与网格对齐后再缩小
-                img = img.crop((dx, dy, W, H))
-                W, H = img.size
-            tw, th = max(1, round(W / k)), max(1, round(H / k))
-            # auto 模式：块内颜色干净（重建误差小）用最近邻；
-            # 块内有噪点（网格线/JPEG，重建误差大）用块主色聚合去噪
-            use_mode = det_info["errs"].get(det_info["k_small"], 1.0) >= ERR_TOL
-        else:
-            tw, th = W, H
 
     # 缩小
     if (tw, th) == (W, H) and not args.scale and not args.block:
-        small = img  # 本身就是单像素风格，无需缩小
+        small = img  # 本身就是单像素风格 / 未检测到可缩小的像素格，无需缩小
     elif args.method == "nearest":
         small = downscale_nearest(img, tw, th)
     elif args.method == "mode":
@@ -717,7 +893,7 @@ def process_file(in_path: str, args: argparse.Namespace) -> tuple[str, dict] | N
             q = small.quantize(args.quantize, method=Image.Quantize.MEDIANCUT)
         small = q.convert("RGBA")
 
-    note = "图片本身就是单像素风格，无需缩小" \
+    note = "未检测到可缩小的像素格（可能不是放大后的像素画），保持原尺寸" \
         if (tw, th) == (W, H) and not args.scale and not args.block else ""
 
     rep = _report_info(in_path, img, raw_W, raw_H, kx, ky, tw, th, small, note, args, det_info)
@@ -772,6 +948,13 @@ def print_report(r: dict) -> None:
                   f"  (网格 {det['cols']} x {det['rows']})")
         elif det.get("manual"):
             print(f"块大小:    手动指定 = {r['kx']} x {r['ky']} 像素")
+        elif "best_analysis" in det:
+            mm_val = det.get("mm", {}).get(r["kx"], "-")
+            if isinstance(mm_val, float):
+                mm_val = f"{mm_val:.4f}"
+            print(f"块大小:    自动检测 = {r['kx']} x {r['ky']} 像素"
+                  f"  (分析图候选 {det.get('best_analysis', '-')},"
+                  f" 模式重建误差 {mm_val})")
         else:
             print(f"块大小:    自动检测 = {r['kx']} x {r['ky']} 像素"
                   f"  (边界众数 {det.get('cx', '-')}/{det.get('cy', '-')},"
